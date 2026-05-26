@@ -398,6 +398,18 @@ function sel(tipo) {
   document.getElementById('qtdSel').textContent = selecionados.size;
 }
 
+// Gera variações do número do processo (com e sem pontuação)
+function variacoesNumero(num) {
+  const semPontos = num.replace(/[.\-\/]/g, '');
+  const vars = new Set([num, semPontos]);
+  // Tenta formato CNJ formatado: NNNNNNN-DD.AAAA.J.TT.OOOO
+  if (/^\d{20}$/.test(semPontos)) {
+    const fmt = `${semPontos.slice(0,7)}-${semPontos.slice(7,9)}.${semPontos.slice(9,13)}.${semPontos.slice(13,14)}.${semPontos.slice(14,16)}.${semPontos.slice(16)}`;
+    vars.add(fmt);
+  }
+  return [...vars];
+}
+
 async function buscarNumero() {
   if(buscando) return;
   const num = document.getElementById('numProcesso').value.trim();
@@ -414,6 +426,7 @@ async function buscarNumero() {
   document.getElementById('progFill').style.width = '0%';
 
   const apiKey = document.getElementById('apiKeyInput').value.trim();
+  const nums = variacoesNumero(num);
   let done = 0;
 
   const atualizar = () => {
@@ -431,17 +444,22 @@ async function buscarNumero() {
     const lote = lista.slice(i, i+CONC);
     await Promise.all(lote.map(async t=>{
       try {
-        const r = await fetch(`${API_BASE}/${t.id}/_search`, {
-          method:'POST',
-          headers:{'Authorization':`APIKey ${apiKey}`,'Content-Type':'application/json'},
-          body: JSON.stringify({query:{match:{numeroProcesso:num}},size:5}),
-          signal: AbortSignal.timeout(12000)
-        });
-        if(r.ok) {
+        // Tenta cada variação do número até achar resultado
+        for (const n of nums) {
+          const r = await fetch(`${API_BASE}/${t.id}/_search`, {
+            method:'POST',
+            headers:{'Authorization':`APIKey ${apiKey}`,'Content-Type':'application/json'},
+            body: JSON.stringify({query:{match:{numeroProcesso:n}},size:5}),
+            signal: AbortSignal.timeout(12000)
+          });
+          if(!r.ok) continue;
           const data = await r.json();
           const hits = data?.hits?.hits||[];
-          hits.forEach(h=>resultadosNum.push({...h._source,_trib:t,_id:h._id}));
-          if(hits.length) renderNumResultados();
+          if(hits.length) {
+            hits.forEach(h=>resultadosNum.push({...h._source,_trib:t,_id:h._id}));
+            renderNumResultados();
+            break; // encontrou — não precisa tentar outras variações
+          }
         }
       } catch {}
       done++;
