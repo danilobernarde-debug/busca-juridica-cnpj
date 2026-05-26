@@ -4,7 +4,7 @@ Sistema web para consulta de processos judiciais por CNPJ em todos os tribunais 
 
 ## Acesso rápido
 
-🔗 **[Abrir o sistema](https://seuusuario.github.io/busca-juridica-cnpj)**
+🔗 **[Abrir o sistema](https://danilobernarde-debug.github.io/busca-juridica-cnpj/)**
 
 ## Funcionalidades
 
