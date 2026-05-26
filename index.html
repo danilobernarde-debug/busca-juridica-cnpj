@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Busca Jurídica por CNPJ | DataJud CNJ</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface2: #253248;
+      --border: #334155;
+      --blue: #3b82f6;
+      --blue-hover: #2563eb;
+      --green: #10b981;
+      --yellow: #f59e0b;
+      --red: #ef4444;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    header .icon { font-size: 28px; }
+    header h1 { font-size: 20px; font-weight: 700; color: var(--text); }
+    header p { font-size: 13px; color: var(--muted); margin-top: 2px; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 24px 20px; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .search-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    input[type="text"] {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus { border-color: var(--blue); }
+    #cnpjInput { width: 220px; font-size: 17px; letter-spacing: 1px; }
+    #apiKeyInput { width: 420px; font-size: 12px; font-family: monospace; }
+    button {
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      padding: 10px 22px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    button:hover { background: var(--blue-hover); }
+    button:disabled { background: var(--border); cursor: not-allowed; }
+    button.secondary {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    button.secondary:hover { background: var(--border); }
+    .label { font-size: 12px; color: var(--muted); margin-bottom: 6px; display: block; }
+    details > summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 13px;
+      padding: 10px 0 0;
+      user-select: none;
+      list-style: none;
+    }
+    details > summary::before { content: "▶ "; font-size: 10px; }
+    details[open] > summary::before { content: "▼ "; }
+    .settings { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .tribunal-section { margin-top: 16px; }
+    .tribunal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .tribunal-header span { font-size: 13px; color: var(--muted); }
+    .preset-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+    .preset-btns button {
+      padding: 4px 12px;
+      font-size: 12px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .preset-btns button:hover { background: var(--border); }
+    .tribunal-group { margin-bottom: 12px; }
+    .tribunal-group-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .tribunal-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .trib-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 10px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.15s;
+      user-select: none;
+    }
+    .trib-chip.selected {
+      background: rgba(59, 130, 246, 0.15);
+      border-color: var(--blue);
+      color: #93c5fd;
+    }
+    .trib-chip input[type="checkbox"] { display: none; }
+    .progress-panel { display: none; }
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+    .progress-bar {
+      background: var(--bg);
+      border-radius: 4px;
+      height: 6px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--blue);
+      border-radius: 4px;
+      transition: width 0.3s;
+    }
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .results-title { font-size: 16px; font-weight: 600; }
+    .badge {
+      display: inline-block;
+      background: rgba(59, 130, 246, 0.2);
+      color: var(--blue);
+      border-radius: 12px;
+      padding: 2px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+    .results-actions { display: flex; gap: 8px; }
+    .process-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 10px;
+      transition: border-color 0.2s;
+    }
+    .process-card:hover { border-color: var(--blue); }
+    .process-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .process-num {
+      font-family: monospace;
+      font-size: 15px;
+      font-weight: 600;
+      color: #93c5fd;
+    }
+    .tribunal-tag {
+      background: rgba(59, 130, 246, 0.15);
+      color: #93c5fd;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 6px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .process-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      font-size: 13px;
+    }
+    .meta-item { display: flex; flex-direction: column; gap: 2px; }
+    .meta-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .meta-value { color: var(--text); }
+    .meta-value.green { color: var(--green); }
+    .meta-value.yellow { color: var(--yellow); }
+    .parties { margin-top: 10px; }
+    .party-row {
+      display: flex;
+      gap: 8px;
+      font-size: 13px;
+      padding: 4px 0;
+      border-top: 1px solid rgba(255,255,255,0.04);
+    }
+    .party-polo {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+      align-self: flex-start;
+      margin-top: 1px;
+    }
+    .polo-ativo { background: rgba(16, 185, 129, 0.2); color: var(--green); }
+    .polo-passivo { background: rgba(239, 68, 68, 0.2); color: var(--red); }
+    .polo-outro { background: rgba(148, 163, 184, 0.2); color: var(--muted); }
+    .party-name { color: var(--text); flex: 1; }
+    .party-doc { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .expand-btn {
+      background: none;
+      border: none;
+      color: var(--blue);
+      font-size: 12px;
+      cursor: pointer;
+      padding: 4px 0;
+      margin-top: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .expand-btn:hover { text-decoration: underline; background: none; }
+    .detail-panel {
+      display: none;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .detail-panel pre {
+      background: var(--bg);
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      overflow: auto;
+      max-height: 300px;
+      white-space: pre-wrap;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .no-results {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--muted);
+    }
+    .no-results .icon { font-size: 48px; margin-bottom: 12px; }
+    .error-msg {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: var(--red);
+      font-size: 13px;
+      margin-top: 8px;
+    }
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+    .dot-green { background: var(--green); }
+    .dot-yellow { background: var(--yellow); }
+    .dot-red { background: var(--red); }
+    .tribunal-status {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .trib-status-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      padding: 4px 8px;
+      background: var(--surface2);
+      border-radius: 6px;
+    }
+    .trib-status-found { color: var(--green); }
+    .trib-status-empty { color: var(--muted); }
+    .trib-status-error { color: var(--red); }
+    footer {
+      text-align: center;
+      padding: 32px 20px;
+      color: var(--muted);
+      font-size: 12px;
+      border-top: 1px solid var(--border);
+      margin-top: 32px;
+    }
+    @media (max-width: 600px) {
+      #cnpjInput { width: 100%; }
+      #apiKeyInput { width: 100%; }
+      .search-row { flex-direction: column; align-items: stretch; }
+      .search-row button { text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="icon">⚖️</div>
+  <div>
+    <h1>Busca Jurídica por CNPJ</h1>
+    <p>Consulta processual em todos os tribunais via DataJud — CNJ</p>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- Painel de Busca -->
+  <div class="card">
+    <span class="label">CNPJ da empresa</span>
+    <div class="search-row">
+      <input type="text" id="cnpjInput" placeholder="00.000.000/0000-00" maxlength="18"
+        oninput="formatarCNPJ(this)" onkeydown="if(event.key==='Enter') iniciarBusca()">
+      <button onclick="iniciarBusca()" id="btnBuscar">🔍 Buscar Processos</button>
+      <button class="secondary" onclick="limpar()">✕ Limpar</button>
+    </div>
+    <div id="cnpjError" class="error-msg" style="display:none"></div>
+
+    <details>
+      <summary>⚙️ Configurações avançadas</summary>
+      <div class="settings">
+        <div>
+          <span class="label">Chave API DataJud (CNJ)</span>
+          <input type="text" id="apiKeyInput" value="cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw==">
+        </div>
+        <div>
+          <span class="label">Resultados por tribunal</span>
+          <input type="text" id="sizeInput" value="20" style="width:80px">
+        </div>
+      </div>
+    </details>
+
+    <div class="tribunal-section">
+      <div class="tribunal-header">
+        <span>Tribunais para pesquisar (<span id="countSelected">33</span> selecionados)</span>
+        <div class="preset-btns">
+          <button onclick="selecionarTipo('all')">Todos</button>
+          <button onclick="selecionarTipo('tj')">Só TJ</button>
+          <button onclick="selecionarTipo('trf')">Só TRF</button>
+          <button onclick="selecionarTipo('trt')">Só TRT</button>
+          <button onclick="selecionarTipo('none')">Nenhum</button>
+        </div>
+      </div>
+      <div id="tribunalList"></div>
+    </div>
+  </div>
+
+  <!-- Progresso -->
+  <div class="card progress-panel" id="progressPanel">
+    <div class="progress-header">
+      <span id="progressText">Iniciando busca...</span>
+      <span id="progressCount" style="color:var(--muted);font-size:13px"></span>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill" style="width:0%"></div>
+    </div>
+    <div id="tribunalStatusGrid" class="tribunal-status" style="margin-top:10px"></div>
+  </div>
+
+  <!-- Resultados -->
+  <div id="resultsPanel"></div>
+
+</div>
+
+<footer>
+  DataJud — Portal Nacional de Dados do Poder Judiciário (CNJ) &nbsp;|&nbsp;
+  API Pública: api-publica.datajud.cnj.jus.br
+</footer>
+
+<script>
+const API_BASE = 'https://api-publica.datajud.cnj.jus.br';
+const CONCORRENCIA = 6;
+
+const TRIBUNAIS = [
+  // TJ Estaduais
+  { id: 'api_publica_tjac',  sigla: 'TJAC',  nome: 'Acre',                    tipo: 'tj' },
+  { id: 'api_publica_tjal',  sigla: 'TJAL',  nome: 'Alagoas',                 tipo: 'tj' },
+  { id: 'api_publica_tjam',  sigla: 'TJAM',  nome: 'Amazonas',                tipo: 'tj' },
+  { id: 'api_publica_tjap',  sigla: 'TJAP',  nome: 'Amapá',                   tipo: 'tj' },
+  { id: 'api_publica_tjba',  sigla: 'TJBA',  nome: 'Bahia',                   tipo: 'tj' },
+  { id: 'api_publica_tjce',  sigla: 'TJCE',  nome: 'Ceará',                   tipo: 'tj' },
+  { id: 'api_publica_tjdft', sigla: 'TJDFT', nome: 'Distrito Federal',        tipo: 'tj' },
+  { id: 'api_publica_tjes',  sigla: 'TJES',  nome: 'Espírito Santo',          tipo: 'tj' },
+  { id: 'api_publica_tjgo',  sigla: 'TJGO',  nome: 'Goiás',                   tipo: 'tj' },
+  { id: 'api_publica_tjma',  sigla: 'TJMA',  nome: 'Maranhão',                tipo: 'tj' },
+  { id: 'api_publica_tjmg',  sigla: 'TJMG',  nome: 'Minas Gerais',            tipo: 'tj' },
+  { id: 'api_publica_tjms',  sigla: 'TJMS',  nome: 'Mato Grosso do Sul',      tipo: 'tj' },
+  { id: 'api_publica_tjmt',  sigla: 'TJMT',  nome: 'Mato Grosso',             tipo: 'tj' },
+  { id: 'api_publica_tjpa',  sigla: 'TJPA',  nome: 'Pará',                    tipo: 'tj' },
+  { id: 'api_publica_tjpb',  sigla: 'TJPB',  nome: 'Paraíba',                 tipo: 'tj' },
+  { id: 'api_publica_tjpe',  sigla: 'TJPE',  nome: 'Pernambuco',              tipo: 'tj' },
+  { id: 'api_publica_tjpi',  sigla: 'TJPI',  nome: 'Piauí',                   tipo: 'tj' },
+  { id: 'api_publica_tjpr',  sigla: 'TJPR',  nome: 'Paraná',                  tipo: 'tj' },
+  { id: 'api_publica_tjrj',  sigla: 'TJRJ',  nome: 'Rio de Janeiro',          tipo: 'tj' },
+  { id: 'api_publica_tjrn',  sigla: 'TJRN',  nome: 'Rio Grande do Norte',     tipo: 'tj' },
+  { id: 'api_publica_tjro',  sigla: 'TJRO',  nome: 'Rondônia',                tipo: 'tj' },
+  { id: 'api_publica_tjrr',  sigla: 'TJRR',  nome: 'Roraima',                 tipo: 'tj' },
+  { id: 'api_publica_tjrs',  sigla: 'TJRS',  nome: 'Rio Grande do Sul',       tipo: 'tj' },
+  { id: 'api_publica_tjsc',  sigla: 'TJSC',  nome: 'Santa Catarina',          tipo: 'tj' },
+  { id: 'api_publica_tjse',  sigla: 'TJSE',  nome: 'Sergipe',                 tipo: 'tj' },
+  { id: 'api_publica_tjsp',  sigla: 'TJSP',  nome: 'São Paulo',               tipo: 'tj' },
+  { id: 'api_publica_tjto',  sigla: 'TJTO',  nome: 'Tocantins',               tipo: 'tj' },
+  // TRF
+  { id: 'api_publica_trf1',  sigla: 'TRF1',  nome: '1ª Região',               tipo: 'trf' },
+  { id: 'api_publica_trf2',  sigla: 'TRF2',  nome: '2ª Região',               tipo: 'trf' },
+  { id: 'api_publica_trf3',  sigla: 'TRF3',  nome: '3ª Região',               tipo: 'trf' },
+  { id: 'api_publica_trf4',  sigla: 'TRF4',  nome: '4ª Região',               tipo: 'trf' },
+  { id: 'api_publica_trf5',  sigla: 'TRF5',  nome: '5ª Região',               tipo: 'trf' },
+  { id: 'api_publica_trf6',  sigla: 'TRF6',  nome: '6ª Região',               tipo: 'trf' },
+  // TRT
+  { id: 'api_publica_trt1',  sigla: 'TRT1',  nome: '1ª Região (RJ)',          tipo: 'trt' },
+  { id: 'api_publica_trt2',  sigla: 'TRT2',  nome: '2ª Região (SP)',          tipo: 'trt' },
+  { id: 'api_publica_trt3',  sigla: 'TRT3',  nome: '3ª Região (MG)',          tipo: 'trt' },
+  { id: 'api_publica_trt4',  sigla: 'TRT4',  nome: '4ª Região (RS)',          tipo: 'trt' },
+  { id: 'api_publica_trt5',  sigla: 'TRT5',  nome: '5ª Região (BA)',          tipo: 'trt' },
+  { id: 'api_publica_trt6',  sigla: 'TRT6',  nome: '6ª Região (PE)',          tipo: 'trt' },
+  { id: 'api_publica_trt7',  sigla: 'TRT7',  nome: '7ª Região (CE)',          tipo: 'trt' },
+  { id: 'api_publica_trt8',  sigla: 'TRT8',  nome: '8ª Região (PA/AP)',       tipo: 'trt' },
+  { id: 'api_publica_trt9',  sigla: 'TRT9',  nome: '9ª Região (PR)',          tipo: 'trt' },
+  { id: 'api_publica_trt10', sigla: 'TRT10', nome: '10ª Região (DF/TO)',      tipo: 'trt' },
+  { id: 'api_publica_trt11', sigla: 'TRT11', nome: '11ª Região (AM/RR)',      tipo: 'trt' },
+  { id: 'api_publica_trt12', sigla: 'TRT12', nome: '12ª Região (SC)',         tipo: 'trt' },
+  { id: 'api_publica_trt13', sigla: 'TRT13', nome: '13ª Região (PB)',         tipo: 'trt' },
+  { id: 'api_publica_trt14', sigla: 'TRT14', nome: '14ª Região (RO/AC)',      tipo: 'trt' },
+  { id: 'api_publica_trt15', sigla: 'TRT15', nome: '15ª Região (Campinas)',   tipo: 'trt' },
+  { id: 'api_publica_trt16', sigla: 'TRT16', nome: '16ª Região (MA)',         tipo: 'trt' },
+  { id: 'api_publica_trt17', sigla: 'TRT17', nome: '17ª Região (ES)',         tipo: 'trt' },
+  { id: 'api_publica_trt18', sigla: 'TRT18', nome: '18ª Região (GO)',         tipo: 'trt' },
+  { id: 'api_publica_trt19', sigla: 'TRT19', nome: '19ª Região (AL)',         tipo: 'trt' },
+  { id: 'api_publica_trt20', sigla: 'TRT20', nome: '20ª Região (SE)',         tipo: 'trt' },
+  { id: 'api_publica_trt21', sigla: 'TRT21', nome: '21ª Região (RN)',         tipo: 'trt' },
+  { id: 'api_publica_trt22', sigla: 'TRT22', nome: '22ª Região (PI)',         tipo: 'trt' },
+  { id: 'api_publica_trt23', sigla: 'TRT23', nome: '23ª Região (MT)',         tipo: 'trt' },
+  { id: 'api_publica_trt24', sigla: 'TRT24', nome: '24ª Região (MS)',         tipo: 'trt' },
+  // Superiores
+  { id: 'api_publica_stj',   sigla: 'STJ',   nome: 'Sup. Tribunal de Justiça', tipo: 'superior' },
+  { id: 'api_publica_tst',   sigla: 'TST',   nome: 'Tribunal Sup. do Trabalho', tipo: 'superior' },
+];
+
+// Estado global
+let selecionados = new Set(
+  TRIBUNAIS.filter(t => t.tipo === 'tj' || t.tipo === 'trf').map(t => t.id)
+);
+let todosResultados = [];
+let buscandoAgora = false;
+
+// ---------- Inicialização ----------
+function init() {
+  renderTribunais();
+  atualizarContagem();
+}
+
+function renderTribunais() {
+  const container = document.getElementById('tribunalList');
+  const grupos = {
+    tj: { label: 'Tribunais de Justiça Estaduais (TJ)', items: [] },
+    trf: { label: 'Tribunais Regionais Federais (TRF)', items: [] },
+    trt: { label: 'Tribunais Regionais do Trabalho (TRT)', items: [] },
+    superior: { label: 'Tribunais Superiores', items: [] },
+  };
+  TRIBUNAIS.forEach(t => grupos[t.tipo].items.push(t));
+
+  container.innerHTML = Object.entries(grupos).map(([tipo, grupo]) => `
+    <div class="tribunal-group">
+      <div class="tribunal-group-title">${grupo.label}</div>
+      <div class="tribunal-grid">
+        ${grupo.items.map(t => `
+          <label class="trib-chip ${selecionados.has(t.id) ? 'selected' : ''}" id="chip_${t.id}" title="${t.sigla} — ${t.nome}">
+            <input type="checkbox" ${selecionados.has(t.id) ? 'checked' : ''} onchange="toggleTribunal('${t.id}', this.checked)">
+            ${t.sigla}
+          </label>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleTribunal(id, checked) {
+  if (checked) selecionados.add(id); else selecionados.delete(id);
+  const chip = document.getElementById('chip_' + id);
+  if (chip) chip.classList.toggle('selected', checked);
+  atualizarContagem();
+}
+
+function selecionarTipo(tipo) {
+  TRIBUNAIS.forEach(t => {
+    const selecionar = tipo === 'all' || (tipo !== 'none' && t.tipo === tipo);
+    if (selecionar) selecionados.add(t.id); else selecionados.delete(t.id);
+    const chip = document.getElementById('chip_' + t.id);
+    const cb = chip?.querySelector('input[type="checkbox"]');
+    if (chip) chip.classList.toggle('selected', selecionar);
+    if (cb) cb.checked = selecionar;
+  });
+  atualizarContagem();
+}
+
+function atualizarContagem() {
+  document.getElementById('countSelected').textContent = selecionados.size;
+}
+
+// ---------- CNPJ ----------
+function formatarCNPJ(input) {
+  let v = input.value.replace(/\D/g, '').substring(0, 14);
+  if (v.length > 12) v = v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{0,2})/, '$1.$2.$3/$4-$5');
+  else if (v.length > 8) v = v.replace(/^(\d{2})(\d{3})(\d{3})(\d{0,4})/, '$1.$2.$3/$4');
+  else if (v.length > 5) v = v.replace(/^(\d{2})(\d{3})(\d{0,3})/, '$1.$2.$3');
+  else if (v.length > 2) v = v.replace(/^(\d{2})(\d{0,3})/, '$1.$2');
+  input.value = v;
+  document.getElementById('cnpjError').style.display = 'none';
+}
+
+function validarCNPJ(cnpj) {
+  cnpj = cnpj.replace(/\D/g, '');
+  if (cnpj.length !== 14) return false;
+  if (/^(\d)\1+$/.test(cnpj)) return false;
+  const calc = (n) => {
+    let soma = 0, pos = n - 7;
+    for (let i = n; i >= 1; i--) {
+      soma += parseInt(cnpj.charAt(n - i)) * pos--;
+      if (pos < 2) pos = 9;
+    }
+    return soma % 11 < 2 ? 0 : 11 - (soma % 11);
+  };
+  return calc(12) === parseInt(cnpj[12]) && calc(13) === parseInt(cnpj[13]);
+}
+
+// ---------- Busca ----------
+async function iniciarBusca() {
+  if (buscandoAgora) return;
+  const cnpjRaw = document.getElementById('cnpjInput').value.replace(/\D/g, '');
+  const errEl = document.getElementById('cnpjError');
+
+  if (!cnpjRaw) {
+    errEl.textContent = 'Digite um CNPJ para pesquisar.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!validarCNPJ(cnpjRaw)) {
+    errEl.textContent = 'CNPJ inválido. Verifique os dígitos.';
+    errEl.style.display = 'block';
+    return;
+  }
+  errEl.style.display = 'none';
+
+  const tribunaisSelecionados = TRIBUNAIS.filter(t => selecionados.has(t.id));
+  if (!tribunaisSelecionados.length) {
+    errEl.textContent = 'Selecione ao menos um tribunal.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  buscandoAgora = true;
+  document.getElementById('btnBuscar').disabled = true;
+  todosResultados = [];
+  document.getElementById('resultsPanel').innerHTML = '';
+
+  const progPanel = document.getElementById('progressPanel');
+  progPanel.style.display = 'block';
+  document.getElementById('tribunalStatusGrid').innerHTML = '';
+
+  let concluidos = 0;
+  const total = tribunaisSelecionados.length;
+  const apiKey = document.getElementById('apiKeyInput').value.trim();
+  const size = parseInt(document.getElementById('sizeInput').value) || 20;
+
+  const atualizar = () => {
+    const pct = Math.round((concluidos / total) * 100);
+    document.getElementById('progressFill').style.width = pct + '%';
+    document.getElementById('progressCount').textContent = `${concluidos}/${total}`;
+    document.getElementById('progressText').textContent =
+      concluidos < total ? `Pesquisando em ${total - concluidos} tribunal(is)...` : `Busca concluída — ${todosResultados.length} processo(s) encontrado(s)`;
+  };
+  atualizar();
+
+  // Processa em lotes paralelos
+  for (let i = 0; i < tribunaisSelecionados.length; i += CONCORRENCIA) {
+    const lote = tribunaisSelecionados.slice(i, i + CONCORRENCIA);
+    await Promise.all(lote.map(async t => {
+      const resultado = await buscarNaTribunal(cnpjRaw, t, apiKey, size);
+      adicionarStatusTribunal(t, resultado);
+      todosResultados.push(...resultado.processos);
+      renderResultados();
+      concluidos++;
+      atualizar();
+    }));
+  }
+
+  document.getElementById('btnBuscar').disabled = false;
+  buscandoAgora = false;
+  atualizar();
+  renderResultados(true);
+}
+
+async function buscarNaTribunal(cnpj, tribunal, apiKey, size) {
+  const headers = {
+    'Authorization': `APIKey ${apiKey}`,
+    'Content-Type': 'application/json'
+  };
+
+  const queries = [
+    // Nested query (mais preciso para campos aninhados)
+    {
+      query: { nested: { path: 'partes', query: { match: { 'partes.cpfCnpj': cnpj } } } },
+      size, sort: [{ dataAjuizamento: { order: 'desc' } }]
+    },
+    // Query flat (fallback)
+    {
+      query: { match: { 'partes.cpfCnpj': cnpj } },
+      size, sort: [{ dataAjuizamento: { order: 'desc' } }]
+    }
+  ];
+
+  for (const queryBody of queries) {
+    try {
+      const res = await fetch(`${API_BASE}/${tribunal.id}/_search`, {
+        method: 'POST', headers, body: JSON.stringify(queryBody),
+        signal: AbortSignal.timeout(15000)
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      const hits = data?.hits?.hits || [];
+      if (hits.length > 0) {
+        return {
+          status: 'found',
+          processos: hits.map(h => ({ ...h._source, _tribunal: tribunal, _id: h._id }))
+        };
+      }
+      return { status: 'empty', processos: [] };
+    } catch (e) {
+      // Tenta próxima query; se for a última, retorna erro
+    }
+  }
+  return { status: 'error', processos: [] };
+}
+
+function adicionarStatusTribunal(tribunal, resultado) {
+  const grid = document.getElementById('tribunalStatusGrid');
+  const div = document.createElement('div');
+  div.className = 'trib-status-item';
+  const icons = { found: '✅', empty: '⭕', error: '⚠️' };
+  const cls = { found: 'trib-status-found', empty: 'trib-status-empty', error: 'trib-status-error' };
+  const count = resultado.processos.length;
+  div.innerHTML = `
+    <span>${icons[resultado.status] || '⭕'}</span>
+    <span class="${cls[resultado.status] || 'trib-status-empty'}">${tribunal.sigla}${count > 0 ? ` (${count})` : ''}</span>
+  `;
+  grid.appendChild(div);
+}
+
+// ---------- Renderização ----------
+function renderResultados(final = false) {
+  const panel = document.getElementById('resultsPanel');
+  if (!todosResultados.length) {
+    if (final) {
+      panel.innerHTML = `
+        <div class="no-results">
+          <div class="icon">📭</div>
+          <p>Nenhum processo encontrado para este CNPJ nos tribunais selecionados.</p>
+          <p style="margin-top:8px;font-size:12px">Tente selecionar mais tribunais ou verificar o CNPJ.</p>
+        </div>`;
+    }
+    return;
+  }
+
+  const sorted = [...todosResultados].sort((a, b) => {
+    const da = a.dataAjuizamento || '';
+    const db = b.dataAjuizamento || '';
+    return db.localeCompare(da);
+  });
+
+  panel.innerHTML = `
+    <div class="card">
+      <div class="results-header">
+        <div class="results-title">
+          Processos encontrados <span class="badge">${sorted.length}</span>
+        </div>
+        <div class="results-actions">
+          <button class="secondary" onclick="exportarCSV()">⬇️ Exportar CSV</button>
+          <button class="secondary" onclick="exportarJSON()">⬇️ Exportar JSON</button>
+        </div>
+      </div>
+      ${sorted.map((p, i) => renderCard(p, i)).join('')}
+    </div>`;
+}
+
+function renderCard(p, idx) {
+  const partes = Array.isArray(p.partes) ? p.partes : [];
+  const assunto = p.assuntos?.[0]?.nome || p.classe?.nome || '—';
+  const dataAj = p.dataAjuizamento ? new Date(p.dataAjuizamento).toLocaleDateString('pt-BR') : '—';
+  const dataUltMov = p.dataUltimaAtualizacao ? new Date(p.dataUltimaAtualizacao).toLocaleDateString('pt-BR') : '—';
+  const grau = p.grau || '—';
+  const valor = p.valorCausa != null ? 'R$ ' + Number(p.valorCausa).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '—';
+  const orgao = p.orgaoJulgador?.nome || '—';
+
+  const partesHtml = partes.slice(0, 6).map(pt => {
+    const polo = (pt.polo || '').toUpperCase();
+    const cls = polo === 'ATIVO' ? 'polo-ativo' : polo === 'PASSIVO' ? 'polo-passivo' : 'polo-outro';
+    const label = polo || 'OUTRO';
+    const doc = pt.cpfCnpj ? `<span class="party-doc">${fmtDoc(pt.cpfCnpj)}</span>` : '';
+    return `<div class="party-row">
+      <span class="party-polo ${cls}">${label}</span>
+      <span class="party-name">${pt.nome || '—'}</span>
+      ${doc}
+    </div>`;
+  }).join('') || '<div style="color:var(--muted);font-size:13px">Partes não disponíveis</div>';
+
+  return `
+    <div class="process-card">
+      <div class="process-top">
+        <span class="process-num">${p.numeroProcesso || '—'}</span>
+        <span class="tribunal-tag">${p._tribunal?.sigla || '—'}</span>
+      </div>
+      <div class="process-meta">
+        <div class="meta-item"><span class="meta-label">Assunto</span><span class="meta-value">${assunto}</span></div>
+        <div class="meta-item"><span class="meta-label">Ajuizamento</span><span class="meta-value">${dataAj}</span></div>
+        <div class="meta-item"><span class="meta-label">Última atualização</span><span class="meta-value green">${dataUltMov}</span></div>
+        <div class="meta-item"><span class="meta-label">Grau</span><span class="meta-value">${grau}</span></div>
+        <div class="meta-item"><span class="meta-label">Valor da causa</span><span class="meta-value">${valor}</span></div>
+        <div class="meta-item"><span class="meta-label">Órgão julgador</span><span class="meta-value">${orgao}</span></div>
+      </div>
+      <div class="parties" style="margin-top:10px">${partesHtml}</div>
+      <button class="expand-btn" onclick="toggleDetalhe(${idx})">▶ Ver dados completos</button>
+      <div class="detail-panel" id="detail_${idx}">
+        <pre>${JSON.stringify(p, null, 2).replace(/</g,'&lt;')}</pre>
+      </div>
+    </div>`;
+}
+
+function toggleDetalhe(idx) {
+  const el = document.getElementById('detail_' + idx);
+  const open = el.style.display === 'block';
+  el.style.display = open ? 'none' : 'block';
+  el.previousElementSibling.textContent = (open ? '▶' : '▼') + ' Ver dados completos';
+}
+
+function fmtDoc(doc) {
+  doc = (doc || '').replace(/\D/g, '');
+  if (doc.length === 14) return doc.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+  if (doc.length === 11) return doc.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  return doc;
+}
+
+// ---------- Exportação ----------
+function exportarCSV() {
+  const cols = ['numeroProcesso', 'tribunal', 'assunto', 'grau', 'dataAjuizamento', 'dataUltimaAtualizacao', 'valorCausa'];
+  const header = cols.join(';');
+  const rows = todosResultados.map(p => [
+    p.numeroProcesso || '',
+    p._tribunal?.sigla || '',
+    p.assuntos?.[0]?.nome || p.classe?.nome || '',
+    p.grau || '',
+    p.dataAjuizamento || '',
+    p.dataUltimaAtualizacao || '',
+    p.valorCausa || ''
+  ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(';'));
+  const bom = '﻿';
+  const blob = new Blob([bom + header + '\n' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+  baixarArquivo(blob, `processos_${document.getElementById('cnpjInput').value.replace(/\D/g,'')}.csv`);
+}
+
+function exportarJSON() {
+  const blob = new Blob([JSON.stringify(todosResultados, null, 2)], { type: 'application/json' });
+  baixarArquivo(blob, `processos_${document.getElementById('cnpjInput').value.replace(/\D/g,'')}.json`);
+}
+
+function baixarArquivo(blob, nome) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = nome;
+  a.click();
+}
+
+function limpar() {
+  document.getElementById('cnpjInput').value = '';
+  document.getElementById('cnpjError').style.display = 'none';
+  document.getElementById('progressPanel').style.display = 'none';
+  document.getElementById('resultsPanel').innerHTML = '';
+  todosResultados = [];
+}
+
+init();
+</script>
+</body>
+</html>

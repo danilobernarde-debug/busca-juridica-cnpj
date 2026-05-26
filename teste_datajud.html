@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Diagnóstico DataJud</title>
+<style>
+  body { font-family: monospace; background: #0f172a; color: #e2e8f0; padding: 24px; }
+  h2 { color: #3b82f6; }
+  button { background: #3b82f6; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; margin: 4px; }
+  pre { background: #1e293b; padding: 16px; border-radius: 8px; overflow: auto; font-size: 12px; white-space: pre-wrap; border: 1px solid #1e3a5f; }
+  .ok { color: #10b981; } .erro { color: #ef4444; } .aviso { color: #f59e0b; }
+  input { background: #1e293b; border: 1px solid #1e3a5f; color: #e2e8f0; padding: 8px 12px; border-radius: 8px; width: 400px; font-size: 13px; }
+  .card { background: #1e293b; border: 1px solid #1e3a5f; border-radius: 10px; padding: 16px; margin: 12px 0; }
+  label { color: #94a3b8; font-size: 12px; display: block; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<h2>🔍 Diagnóstico — DataJud CNJ</h2>
+
+<div class="card">
+  <label>Chave API</label>
+  <input id="apiKey" value="cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw==" style="width:500px"/>
+</div>
+
+<div class="card">
+  <label>Número do processo</label>
+  <input id="numProcesso" value="5181429-19.2026.8.09.0051"/>
+  <br><br>
+  <label>Índice do tribunal</label>
+  <input id="indice" value="api_publica_tjgo"/>
+  <br><br>
+  <button onclick="testarProcesso()">📡 Buscar por número do processo</button>
+  <button onclick="testarCNPJ()">🏢 Buscar por CNPJ</button>
+  <button onclick="testarTodos()">🔄 Testar todos os índices</button>
+</div>
+
+<div class="card">
+  <label>CNPJ para busca</label>
+  <input id="cnpj" value="18612782000185"/>
+</div>
+
+<div id="resultado"></div>
+
+<script>
+const BASE = "https://api-publica.datajud.cnj.jus.br";
+
+function log(html) {
+  document.getElementById("resultado").innerHTML = html;
+}
+
+function apiKey() {
+  return document.getElementById("apiKey").value.trim();
+}
+
+async function testarProcesso() {
+  const num = document.getElementById("numProcesso").value.trim();
+  const idx = document.getElementById("indice").value.trim();
+  log(`<pre class="aviso">🔄 Consultando ${BASE}/${idx}/_search ...\nProcesso: ${num}</pre>`);
+
+  try {
+    // Tenta variações do número
+    const variacoes = [
+      num,
+      num.replace(/[.\-]/g, ""),
+      num.replace(/\./g, "").replace(/-/g, ""),
+    ];
+
+    let html = `<pre>`;
+    for (const v of variacoes) {
+      const body = JSON.stringify({ query: { match: { numeroProcesso: v } }, size: 3 });
+      const res = await fetch(`${BASE}/${idx}/_search`, {
+        method: "POST",
+        headers: {
+          "Authorization": `APIKey ${apiKey()}`,
+          "Content-Type": "application/json"
+        },
+        body
+      });
+
+      const status = res.status;
+      const text = await res.text();
+      let parsed;
+      try { parsed = JSON.parse(text); } catch { parsed = null; }
+
+      const total = parsed?.hits?.total?.value || 0;
+      const hits = parsed?.hits?.hits || [];
+
+      html += `\n<span class="${status===200?'ok':'erro'}">HTTP ${status}</span> | Query: "${v}" | Resultados: ${total}\n`;
+      if (hits.length > 0) {
+        html += `<span class="ok">✅ ENCONTRADO!</span>\n`;
+        html += JSON.stringify(hits[0]._source, null, 2).substring(0, 800) + "\n";
+      } else if (status !== 200) {
+        html += `Resposta: ${text.substring(0, 300)}\n`;
+      }
+    }
+    html += `</pre>`;
+    log(html);
+  } catch(e) {
+    log(`<pre class="erro">❌ Erro de rede: ${e.message}\n\nPossível problema de CORS — o navegador pode estar bloqueando.\nTente abrir o DevTools (F12) → aba Network para ver o erro real.</pre>`);
+  }
+}
+
+async function testarCNPJ() {
+  const cnpj = document.getElementById("cnpj").value.trim();
+  const idx = document.getElementById("indice").value.trim();
+  log(`<pre class="aviso">🔄 Buscando CNPJ ${cnpj} em ${idx}...</pre>`);
+
+  const campos = ["partes.documento", "partes.cpfCnpj", "numeroDocumento"];
+  let html = `<pre>`;
+
+  for (const campo of campos) {
+    try {
+      const body = JSON.stringify({ query: { match: { [campo]: cnpj } }, size: 3 });
+      const res = await fetch(`${BASE}/${idx}/_search`, {
+        method: "POST",
+        headers: { "Authorization": `APIKey ${apiKey()}`, "Content-Type": "application/json" },
+        body
+      });
+      const parsed = await res.json();
+      const total = parsed?.hits?.total?.value || 0;
+      html += `<span class="${total>0?'ok':'aviso'}">Campo: ${campo} → ${total} resultado(s)</span>\n`;
+      if (total > 0) {
+        html += JSON.stringify(parsed.hits.hits[0]._source, null, 2).substring(0, 600) + "\n\n";
+      }
+    } catch(e) {
+      html += `<span class="erro">Erro em ${campo}: ${e.message}</span>\n`;
+    }
+  }
+  html += `</pre>`;
+  log(html);
+}
+
+async function testarTodos() {
+  const num = document.getElementById("numProcesso").value.trim();
+  const indices = [
+    "api_publica_tjgo","api_publica_tjmt","api_publica_tjms",
+    "api_publica_tjsp","api_publica_tjto","api_publica_trt10",
+    "api_publica_trt18","api_publica_trt24"
+  ];
+
+  log(`<pre class="aviso">🔄 Testando ${indices.length} índices para: ${num}</pre>`);
+  let html = `<pre>`;
+
+  for (const idx of indices) {
+    try {
+      const res = await fetch(`${BASE}/${idx}/_search`, {
+        method: "POST",
+        headers: { "Authorization": `APIKey ${apiKey()}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ query: { match: { numeroProcesso: num } }, size: 1 })
+      });
+      const data = await res.json();
+      const total = data?.hits?.total?.value || 0;
+      const statusIcon = total > 0 ? "✅" : (res.status === 200 ? "⭕" : "❌");
+      html += `${statusIcon} ${idx.padEnd(25)} HTTP ${res.status} | ${total} resultado(s)\n`;
+      if (total > 0) {
+        html += `   <span class="ok">→ Processo encontrado! Valor: ${data.hits.hits[0]._source?.valorCausa || "—"}</span>\n`;
+      }
+    } catch(e) {
+      html += `❌ ${idx.padEnd(25)} Erro: ${e.message}\n`;
+    }
+  }
+  html += `\n</pre>`;
+  log(html);
+}
+</script>
+</body>
+</html>
