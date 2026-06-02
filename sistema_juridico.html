@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema Jurídico — DB Machado</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a; --surface: #1e293b; --surface2: #253248; --surface3: #2d3f5a;
+      --border: #334155; --text: #e2e8f0; --muted: #94a3b8;
+      --blue: #3b82f6; --green: #10b981; --yellow: #f59e0b;
+      --red: #ef4444; --purple: #8b5cf6; --orange: #f97316;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; overflow: hidden; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    input, textarea, select { font-family: inherit; font-size: 14px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 8px 12px; outline: none; transition: border-color .2s; width: 100%; }
+    input:focus, textarea:focus, select:focus { border-color: var(--blue); }
+    textarea { resize: vertical; min-height: 80px; }
+    select option { background: var(--surface); }
+    button { font-family: inherit; cursor: pointer; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; padding: 8px 16px; transition: all .2s; }
+    .btn-primary { background: var(--blue); color: #fff; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--surface3); }
+    .btn-danger { background: rgba(239,68,68,.15); color: var(--red); border: 1px solid rgba(239,68,68,.3); }
+    .btn-danger:hover { background: rgba(239,68,68,.25); }
+    .btn-ghost { background: transparent; color: var(--muted); padding: 4px 8px; }
+    .btn-ghost:hover { background: var(--surface2); color: var(--text); }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+    label { font-size: 12px; color: var(--muted); margin-bottom: 4px; display: block; font-weight: 500; }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+// ─── DADOS INICIAIS ──────────────────────────────────────────────────────────
+const PROCESSOS_INICIAIS = [
+  { numero:"463/2025", tipo:"administrativo", fase:"Conhecimento", parte:"Município Rondonópolis", tribunal:"Adm", tramitacao:"Rondonópolis", obs:"Pendente resultado da defesa adm." },
+  { numero:"000447.2025.18.003/2", tipo:"administrativo", fase:"Conhecimento", parte:"MPT", tribunal:"Adm", tramitacao:"PRT 18ª/PTM Anápolis", obs:"Aud. online 02/09/2026 - 14:00" },
+  { numero:"007094-005/2025", tipo:"administrativo", fase:"Arquivado", parte:"MPMT", tribunal:"Adm", tramitacao:"Promotoria Rondonópolis/MT", obs:"TAC não firmado." },
+  { numero:"310/2025", tipo:"administrativo", fase:"Conhecimento", parte:"Município Rondonópolis", tribunal:"Adm", tramitacao:"Rondonópolis", obs:"Defesa adm apresentada. Aguardando resultado" },
+  { numero:"14152.197793/2025-16", tipo:"administrativo", fase:"Conhecimento", parte:"SRTE", tribunal:"Adm", tramitacao:"SRTE Goiás", obs:"Recurso apresentado em 13/03/2026. Pendente decisão." },
+  { numero:"5144799-95.2025.8.09.0051", tipo:"juridico", fase:"Arquivado", parte:"Rayc Consultoria", tribunal:"TJGO", tramitacao:"2ª UPJ - Juizados Goiânia", obs:"Sentença. Extinção Execução" },
+  { numero:"5832162-77.2025.8.09.0049", tipo:"juridico", fase:"Execução", parte:"I.R. Neutzling & Cia LTDA", tribunal:"TJGO", tramitacao:"1ª Vara Cível - Goianésia/GO", obs:"Prazo 15 dias para pagar voluntariamente" },
+  { numero:"6017980-76.2025.8.09.0090", tipo:"juridico", fase:"Execução", parte:"Marcelo Mello Dos Santos", tribunal:"TJGO", tramitacao:"Juizado Cível - Jandaia/GO", obs:"Bloqueio de valor em conta. Embargos até 04/05" },
+  { numero:"5786744-19.2025.8.09.0049", tipo:"juridico", fase:"Execução", parte:"Sicredi Celeiro Centro Oeste", tribunal:"TJGO", tramitacao:"2ª Vara Cível - Goianésia/GO", obs:"Convertida monitória em Execução." },
+  { numero:"5395280-84.2025.8.09.0049", tipo:"juridico", fase:"Execução", parte:"Loc Frotas Locações S.A.", tribunal:"TJGO", tramitacao:"2ª Vara Cível - Goianésia/GO", obs:"Prazo para embargos a execução ou parcelamento até 19/03." },
+  { numero:"5181429-19.2026.8.09.0051", tipo:"juridico", fase:"Conhecimento", parte:"Wstalin Sardinha da Costa e outros", tribunal:"TJGO", tramitacao:"3º Juizado Cível - Goiânia/GO", obs:"Defesa apresentada" },
+  { numero:"5198812-16.2026.8.09.0049", tipo:"juridico", fase:"Execução", parte:"Multiclínica Goianésia", tribunal:"TJGO", tramitacao:"1ª Vara Cível - Goianésia/GO", obs:"Formalizado acordo." },
+  { numero:"5339379-44.2025.8.09.0175", tipo:"juridico", fase:"Execução", parte:"Renilde Rodrigues Pereira", tribunal:"TJGO", tramitacao:"Juizado cível Aruanã", obs:"Cump. sentença. prazo 15 dias." },
+  { numero:"0828686-46.2025.8.12.0110", tipo:"juridico", fase:"Conhecimento", parte:"Jonso de Sousa ME", tribunal:"TJMS", tramitacao:"11ª Juizado Cível - Campo Grande/MS", obs:"Acordo formalizado em audiência" },
+  { numero:"0800561-60.2025.8.12.0048", tipo:"juridico", fase:"Conhecimento", parte:"Rafael Eliseu Nery Duarte", tribunal:"TJMS", tramitacao:"Vara Cível Rio Negro/MS", obs:"Aud. conciliação (videoconferência) 25/05/26" },
+  { numero:"0824192-41.2025.8.12.0110", tipo:"juridico", fase:"Execução", parte:"Metalflex Conexoes Flexiveis LTDA", tribunal:"TJMS", tramitacao:"11ª Juizado Cível - Campo Grande/MS", obs:"Noticiado desc. acordo. possível bloqueio SISBAJUD e RENAJUD" },
+  { numero:"1005651-96.2026.8.11.0003", tipo:"juridico", fase:"Conhecimento", parte:"Ministério Público MT", tribunal:"TJMT", tramitacao:"3ª Vara Cível - Rondonópolis/MT", obs:"Prazo para defesa até 12/05" },
+  { numero:"1043593-08.2025.8.11.0001", tipo:"juridico", fase:"Execução", parte:"Rotacar Auto Eletrica e Mecanica LTDA", tribunal:"TJMT", tramitacao:"Núcleo Juizados MT", obs:"Comunicado descumprimento acordo." },
+  { numero:"4035192-46.2025.8.26.0002", tipo:"juridico", fase:"Execução", parte:"Akad Seguros S.A", tribunal:"TJSP", tramitacao:"12ª Vara Cível - Santo Amaro/SP", obs:"Akad pediu continuidade da execução." },
+  { numero:"4082454-86.2025.8.26.0100", tipo:"juridico", fase:"Execução", parte:"Banco Daycoval S.A.", tribunal:"TJSP", tramitacao:"13ª Vara Cível - Foro Central", obs:"Confirmação de citação ainda não anexa." },
+  { numero:"0000207-09.2026.8.27.2702", tipo:"juridico", fase:"Conhecimento", parte:"Danilo Jose Zuffo Borges LTDA", tribunal:"TJTO", tramitacao:"1ª Vara Cível - Alvorada/TO", obs:"Sentença de procedência. Prazo para Recurso até 30/04" },
+  { numero:"0001651-15.2025.8.27.2734", tipo:"juridico", fase:"Conhecimento", parte:"Polícia Militar Tocantins", tribunal:"TJTO", tramitacao:"Juizado Criminal - Peixe/TO", obs:"Acordo de transação penal." },
+  { numero:"0001751-48.2026.8.27.2729", tipo:"juridico", fase:"Conhecimento", parte:"Comercial de Combustível Casa Tua Eireli", tribunal:"TJTO", tramitacao:"1ª Vara Cível - Palmas/TO", obs:"Aud. conciliação (telepresencial) 15/05/2026 - 14:30." },
+  { numero:"0001779-37.2026.8.27.2722", tipo:"juridico", fase:"Conhecimento", parte:"Michelle Gomes Sales e outro", tribunal:"TJTO", tramitacao:"2ª Vara Cível - Gurupi/TO", obs:"Prazo 15 dias para contestar ação de despejo. Prazo até 07/05" },
+  { numero:"0008063-95.2025.8.27.2722", tipo:"juridico", fase:"Execução", parte:"Alencar Veiga e Advogados", tribunal:"TJTO", tramitacao:"3ª Vara Cível - Gurupi/TO", obs:"Verificar processo 07/05" },
+  { numero:"0009151-71.2025.8.27.2722", tipo:"juridico", fase:"Execução", parte:"Asas Construções LTDA", tribunal:"TJTO", tramitacao:"3ª Vara Cível - Gurupi/TO", obs:"Descumprimento do acordo. Pediu cumprimento de sentença." },
+  { numero:"0010266-30.2025.8.27.2722", tipo:"juridico", fase:"Execução", parte:"Posto Javae LTDA", tribunal:"TJTO", tramitacao:"1ª Vara Cível - Gurupi/TO", obs:"Descumprimento do acordo. Pediu cumprimento de sentença." },
+  { numero:"0020019-72.2026.5.04.0812", tipo:"juridico", fase:"Conhecimento", parte:"Jeferson Presa Arredondo", tribunal:"TRT04", tramitacao:"2ª VT - Bagé/RS", obs:"Formalizado acordo em audiência" },
+  { numero:"0022986-98.2025.5.04.0271", tipo:"juridico", fase:"Conhecimento", parte:"Senergisul-RS", tribunal:"TRT04", tramitacao:"VT - Osório/RS", obs:"Prazo até 05/05" },
+  { numero:"0002703-20.2025.5.07.0029", tipo:"juridico", fase:"Conhecimento", parte:"Luiz Gustavo Tomaz Ubatuba", tribunal:"TRT07", tramitacao:"VT - Tianguá/CE", obs:"Aguardando intimação." },
+  { numero:"0000327-28.2021.5.10.0802", tipo:"juridico", fase:"Arquivado", parte:"Luis Felipe Silva Sousa", tribunal:"TRT10", tramitacao:"2ª VT - Palmas/TO", obs:"Processo Arquivado." },
+  { numero:"0000831-96.2024.5.10.0812", tipo:"juridico", fase:"Arquivado", parte:"Divino Alves Batista", tribunal:"TRT10", tramitacao:"2ª VT - Araguaína/TO", obs:"Processo pronto para arquivamento." },
+  { numero:"0000799-94.2024.5.10.0811", tipo:"juridico", fase:"Conhecimento", parte:"João Domingos Alves Pereira", tribunal:"TRT10", tramitacao:"1ª VT - Araguaína/TO", obs:"Sentença de parcial procedência. RO em julgamento" },
+  { numero:"0001383-60.2025.5.10.0801", tipo:"juridico", fase:"Conhecimento", parte:"Jose de Jesus Gomes da Luz", tribunal:"TRT10", tramitacao:"1ª VT - Palmas/TO", obs:"Julgado procedentes. RO em julgamento." },
+  { numero:"0001419-02.2025.5.10.0802", tipo:"juridico", fase:"Conhecimento", parte:"Adaoilton Alves de Sousa", tribunal:"TRT10", tramitacao:"1ª VT - Palmas/TO", obs:"Sentença parcialmente procedente. RO em julgamento." },
+  { numero:"0000840-89.2025.5.18.0201", tipo:"juridico", fase:"Conhecimento", parte:"Paulo Henrique Ramos Caetano", tribunal:"TRT18", tramitacao:"VT - Uruaçu/GO", obs:"Descumprimento do acordo. Aguardando cálculos." },
+  { numero:"0001205-05.2025.5.18.0053", tipo:"juridico", fase:"Conhecimento", parte:"Bruno Almeida Teixeira", tribunal:"TRT18", tramitacao:"3ª VT - Anápolis/GO", obs:"Descumprimento do acordo. Aguardando cálculos." },
+  { numero:"0881-67.2024.5.23.0002", tipo:"juridico", fase:"Conhecimento", parte:"Regina Lucia Almeida dos Santos Lima", tribunal:"TRT23", tramitacao:"9ª VT - Cuiabá/MT", obs:"Aguardando julgamento TRT." },
+  { numero:"0000874-75.2024.5.23.0002", tipo:"juridico", fase:"Conhecimento", parte:"Regina Lucia Almeida dos Santos Lima", tribunal:"TRT23", tramitacao:"2ª VT - Cuiabá/MT", obs:"Liquidação do saldo devedor" },
+  { numero:"0024217-30.2025.5.24.0005", tipo:"juridico", fase:"Conhecimento", parte:"Joanilson Raimundo Pereira Dias", tribunal:"TRT24", tramitacao:"5ª VT - Campo Grande/MS", obs:"Sentença parcialmente procedente. RO aguardando julgamento." },
+  { numero:"0024153-29.2025.5.24.0002", tipo:"juridico", fase:"Conhecimento", parte:"Diego Henrique de Sousa", tribunal:"TRT24", tramitacao:"2ª VT - Campo Grande/MS", obs:"RO em julgamento." },
+  { numero:"0025112-85.2025.5.24.0006", tipo:"juridico", fase:"Conhecimento", parte:"Denilson Paula da Costa", tribunal:"TRT24", tramitacao:"6ª VT - Campo Grande/MS", obs:"Apresentar quesitos perícia até 29/01/26" },
+  { numero:"0025464-49.2025.5.24.0004", tipo:"juridico", fase:"Conhecimento", parte:"Anderson Leandro Lima", tribunal:"TRT24", tramitacao:"4ª VT - Campo Grande/MS", obs:"Sentença de parcial procedência." },
+];
+
+// ─── STORAGE ─────────────────────────────────────────────────────────────────
+const STORAGE_KEY = 'sj_db_machado_v2';
+const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+const now = () => new Date().toISOString();
+
+function loadData() {
+  try {
+    const s = localStorage.getItem(STORAGE_KEY);
+    if (s) return JSON.parse(s);
+  } catch {}
+  return {
+    processos: PROCESSOS_INICIAIS.map((p, i) => ({
+      id: `p${i+1}`, ...p,
+      audiencias: [], arquivos: [],
+      notas: p.obs ? [{ id: uid(), texto: p.obs, autor: 'Importado', createdAt: now() }] : [],
+      createdAt: now(), updatedAt: now()
+    })),
+    config: { claudeKey: '' }
+  };
+}
+
+function saveData(data) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) {
+    alert('Erro ao salvar: ' + e.message);
+  }
+}
+
+// ─── CORES / ESTILOS ──────────────────────────────────────────────────────────
+const FASE_STYLE = {
+  Conhecimento: { bg:'rgba(59,130,246,.15)', color:'#60a5fa', label:'Conhecimento' },
+  Execução:     { bg:'rgba(239,68,68,.15)',  color:'#f87171', label:'Execução' },
+  Arquivado:    { bg:'rgba(148,163,184,.1)', color:'#94a3b8', label:'Arquivado' },
+};
+const TIPO_STYLE = {
+  juridico:      { bg:'rgba(139,92,246,.15)', color:'#a78bfa', icon:'⚖️', label:'Jurídico' },
+  administrativo:{ bg:'rgba(249,115,22,.15)', color:'#fb923c', icon:'🏛️', label:'Administrativo' },
+};
+
+function Badge({ label, color, bg, size=11 }) {
+  return <span style={{ fontSize:size, padding:'2px 8px', borderRadius:99, background:bg, color, fontWeight:700, whiteSpace:'nowrap', border:`1px solid ${color}30` }}>{label}</span>;
+}
+
+// ─── SIDEBAR ──────────────────────────────────────────────────────────────────
+const NAV = [
+  { id:'dashboard', icon:'📊', label:'Dashboard' },
+  { id:'juridico',  icon:'⚖️', label:'Jurídico' },
+  { id:'adm',       icon:'🏛️', label:'Administrativo' },
+  { id:'agenda',    icon:'📅', label:'Agenda' },
+  { id:'ia',        icon:'🤖', label:'IA Jurídica' },
+  { id:'config',    icon:'⚙️', label:'Configurações' },
+];
+
+function Sidebar({ view, setView, counts }) {
+  return (
+    <div style={{ width:200, background:'#131f35', borderRight:'1px solid var(--border)', display:'flex', flexDirection:'column', flexShrink:0, height:'100vh' }}>
+      <div style={{ padding:'20px 16px 16px', borderBottom:'1px solid var(--border)' }}>
+        <div style={{ fontWeight:800, fontSize:15, color:'var(--text)' }}>⚖️ DB Machado</div>
+        <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>Sistema Jurídico</div>
+      </div>
+      <nav style={{ flex:1, padding:'8px 8px', display:'flex', flexDirection:'column', gap:2 }}>
+        {NAV.map(n => {
+          const active = view === n.id;
+          const count = counts[n.id];
+          return (
+            <button key={n.id} onClick={() => setView(n.id)}
+              style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 12px', borderRadius:8, border:'none', cursor:'pointer', textAlign:'left', width:'100%', background: active ? 'rgba(59,130,246,.2)' : 'transparent', color: active ? '#93c5fd' : 'var(--muted)', fontWeight: active ? 700 : 400, fontSize:13, transition:'all .15s' }}>
+              <span style={{ fontSize:15 }}>{n.icon}</span>
+              <span style={{ flex:1 }}>{n.label}</span>
+              {count > 0 && <span style={{ fontSize:10, background: active ? 'var(--blue)' : 'var(--surface2)', color:'#fff', borderRadius:99, padding:'1px 6px', fontWeight:700 }}>{count}</span>}
+            </button>
+          );
+        })}
+      </nav>
+      <div style={{ padding:'12px 16px', borderTop:'1px solid var(--border)', fontSize:10, color:'var(--muted)' }}>
+        Dados salvos no navegador
+      </div>
+    </div>
+  );
+}
+
+// ─── DASHBOARD ────────────────────────────────────────────────────────────────
+function Dashboard({ processos, setView, setProcessoAberto }) {
+  const hoje = new Date().toISOString().slice(0,10);
+  const em7dias = new Date(Date.now() + 7*86400000).toISOString().slice(0,10);
+
+  const ativos = processos.filter(p => p.fase !== 'Arquivado');
+  const execucao = processos.filter(p => p.fase === 'Execução');
+  const juridicos = processos.filter(p => p.tipo === 'juridico' && p.fase !== 'Arquivado');
+  const adms = processos.filter(p => p.tipo === 'administrativo' && p.fase !== 'Arquivado');
+
+  const audienciasProximas = processos.flatMap(p =>
+    (p.audiencias||[]).filter(a => a.data >= hoje && a.data <= em7dias).map(a => ({ ...a, processo: p }))
+  ).sort((a,b) => a.data.localeCompare(b.data));
+
+  const audienciasHoje = processos.flatMap(p =>
+    (p.audiencias||[]).filter(a => a.data === hoje).map(a => ({ ...a, processo: p }))
+  );
+
+  function StatCard({ icon, label, value, color, onClick }) {
+    return (
+      <div onClick={onClick} style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:'16px 20px', cursor: onClick ? 'pointer' : 'default', transition:'border-color .2s', display:'flex', alignItems:'center', gap:14 }}
+        onMouseEnter={e => onClick && (e.currentTarget.style.borderColor = color || 'var(--blue)')}
+        onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
+        <div style={{ fontSize:28 }}>{icon}</div>
+        <div>
+          <div style={{ fontSize:26, fontWeight:800, color: color || 'var(--text)' }}>{value}</div>
+          <div style={{ fontSize:12, color:'var(--muted)' }}>{label}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ flex:1, overflow:'auto', padding:28 }}>
+      <div style={{ fontSize:20, fontWeight:800, marginBottom:20 }}>
+        Olá 👋 &nbsp;<span style={{ fontSize:14, color:'var(--muted)', fontWeight:400 }}>{new Date().toLocaleDateString('pt-BR', { weekday:'long', day:'numeric', month:'long' })}</span>
+      </div>
+
+      {audienciasHoje.length > 0 && (
+        <div style={{ background:'rgba(239,68,68,.08)', border:'1px solid rgba(239,68,68,.3)', borderRadius:12, padding:'14px 18px', marginBottom:20, display:'flex', alignItems:'center', gap:12 }}>
+          <span style={{ fontSize:24 }}>🔔</span>
+          <div>
+            <div style={{ fontWeight:700, color:'#f87171', fontSize:14 }}>Audiência hoje!</div>
+            {audienciasHoje.map(a => (
+              <div key={a.id} style={{ fontSize:13, color:'var(--text)', marginTop:2 }}>
+                {a.hora && `${a.hora} — `}{a.tipo} · <span style={{ color:'var(--muted)' }}>{a.processo.parte}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(180px,1fr))', gap:12, marginBottom:24 }}>
+        <StatCard icon="📁" label="Processos ativos" value={ativos.length} />
+        <StatCard icon="🔴" label="Em execução" value={execucao.length} color="var(--red)" onClick={() => setView('juridico')} />
+        <StatCard icon="⚖️" label="Jurídicos ativos" value={juridicos.length} color="#a78bfa" onClick={() => setView('juridico')} />
+        <StatCard icon="🏛️" label="Administrativos" value={adms.length} color="var(--orange)" onClick={() => setView('adm')} />
+        <StatCard icon="📅" label="Audiências (7 dias)" value={audienciasProximas.length} color="var(--green)" onClick={() => setView('agenda')} />
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+        <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:20 }}>
+          <div style={{ fontWeight:700, fontSize:14, marginBottom:14, display:'flex', alignItems:'center', gap:8 }}>
+            📅 Próximas audiências <span style={{ fontSize:11, color:'var(--muted)', fontWeight:400 }}>— 7 dias</span>
+          </div>
+          {audienciasProximas.length === 0
+            ? <div style={{ color:'var(--muted)', fontSize:13 }}>Nenhuma audiência nos próximos 7 dias.</div>
+            : audienciasProximas.map(a => (
+              <div key={a.id} onClick={() => { setProcessoAberto(a.processo); setView('detalhe'); }}
+                style={{ padding:'10px 0', borderBottom:'1px solid var(--border)', cursor:'pointer', display:'flex', gap:12, alignItems:'flex-start' }}>
+                <div style={{ textAlign:'center', minWidth:40 }}>
+                  <div style={{ fontSize:18, fontWeight:800, color:'var(--blue)', lineHeight:1 }}>{a.data.slice(8)}</div>
+                  <div style={{ fontSize:10, color:'var(--muted)' }}>{['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][parseInt(a.data.slice(5,7))-1]}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize:13, fontWeight:600 }}>{a.tipo} {a.hora && <span style={{ color:'var(--blue)', fontWeight:400 }}>· {a.hora}</span>}</div>
+                  <div style={{ fontSize:12, color:'var(--muted)' }}>{a.processo.parte}</div>
+                  <div style={{ fontSize:11, color:'var(--muted)' }}>{a.processo.tribunal} · {a.processo.tramitacao}</div>
+                </div>
+              </div>
+            ))
+          }
+        </div>
+
+        <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:20 }}>
+          <div style={{ fontWeight:700, fontSize:14, marginBottom:14 }}>🔴 Execuções em andamento</div>
+          {execucao.length === 0
+            ? <div style={{ color:'var(--muted)', fontSize:13 }}>Nenhuma execução ativa.</div>
+            : execucao.slice(0,8).map(p => (
+              <div key={p.id} onClick={() => { setProcessoAberto(p); setView('detalhe'); }}
+                style={{ padding:'8px 0', borderBottom:'1px solid var(--border)', cursor:'pointer' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
+                  <div style={{ fontSize:12, fontFamily:'monospace', color:'#93c5fd', flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.numero}</div>
+                  <Badge label={p.tribunal} color="#94a3b8" bg="rgba(148,163,184,.1)" size={10} />
+                </div>
+                <div style={{ fontSize:12, color:'var(--muted)', marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.parte}</div>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── LISTA DE PROCESSOS ───────────────────────────────────────────────────────
+function ProcessoList({ processos, tipo, setProcessoAberto, setView, onAdd }) {
+  const [busca, setBusca] = useState('');
+  const [filtroFase, setFiltroFase] = useState('Todos');
+  const [filtroTribunal, setFiltroTribunal] = useState('Todos');
+
+  const lista = processos.filter(p => {
+    if (p.tipo !== tipo) return false;
+    if (filtroFase !== 'Todos' && p.fase !== filtroFase) return false;
+    if (filtroTribunal !== 'Todos' && p.tribunal !== filtroTribunal) return false;
+    if (busca) {
+      const q = busca.toLowerCase();
+      return p.numero.toLowerCase().includes(q) || p.parte.toLowerCase().includes(q) || (p.tribunal||'').toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  const tribunais = ['Todos', ...new Set(processos.filter(p => p.tipo === tipo).map(p => p.tribunal))];
+
+  const st = TIPO_STYLE[tipo];
+
+  return (
+    <div style={{ flex:1, overflow:'auto', padding:28 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+        <div>
+          <div style={{ fontSize:20, fontWeight:800 }}>{st.icon} {st.label}</div>
+          <div style={{ fontSize:13, color:'var(--muted)', marginTop:2 }}>{lista.length} processo(s)</div>
+        </div>
+        <button className="btn-primary" onClick={onAdd} style={{ display:'flex', alignItems:'center', gap:6 }}>
+          + Novo processo
+        </button>
+      </div>
+
+      <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap' }}>
+        <input value={busca} onChange={e=>setBusca(e.target.value)} placeholder="Buscar por número ou parte..." style={{ width:280 }} />
+        <select value={filtroFase} onChange={e=>setFiltroFase(e.target.value)} style={{ width:160 }}>
+          <option>Todos</option>
+          <option>Conhecimento</option>
+          <option>Execução</option>
+          <option>Arquivado</option>
+        </select>
+        <select value={filtroTribunal} onChange={e=>setFiltroTribunal(e.target.value)} style={{ width:140 }}>
+          {tribunais.map(t => <option key={t}>{t}</option>)}
+        </select>
+      </div>
+
+      <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
+        <table style={{ width:'100%', borderCollapse:'collapse' }}>
+          <thead>
+            <tr style={{ background:'var(--surface2)', fontSize:11, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.04em' }}>
+              {['Número', 'Fase', 'Parte contrária', 'Tribunal / Órgão', 'Tramitação', 'Audiências'].map(h =>
+                <th key={h} style={{ padding:'10px 14px', textAlign:'left', fontWeight:600 }}>{h}</th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {lista.length === 0
+              ? <tr><td colSpan={6} style={{ padding:40, textAlign:'center', color:'var(--muted)', fontSize:13 }}>Nenhum processo encontrado.</td></tr>
+              : lista.map(p => {
+                const fs = FASE_STYLE[p.fase] || {};
+                const proxAud = (p.audiencias||[]).filter(a=>a.data >= new Date().toISOString().slice(0,10)).sort((a,b)=>a.data.localeCompare(b.data))[0];
+                return (
+                  <tr key={p.id} onClick={() => { setProcessoAberto(p); setView('detalhe'); }}
+                    style={{ borderTop:'1px solid var(--border)', cursor:'pointer', transition:'background .15s' }}
+                    onMouseEnter={e=>e.currentTarget.style.background='var(--surface2)'}
+                    onMouseLeave={e=>e.currentTarget.style.background=''}>
+                    <td style={{ padding:'11px 14px', fontFamily:'monospace', fontSize:12, color:'#93c5fd', maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.numero}</td>
+                    <td style={{ padding:'11px 14px' }}><Badge label={fs.label||p.fase} color={fs.color} bg={fs.bg} /></td>
+                    <td style={{ padding:'11px 14px', fontSize:13, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.parte}</td>
+                    <td style={{ padding:'11px 14px' }}><Badge label={p.tribunal} color="#94a3b8" bg="rgba(148,163,184,.1)" /></td>
+                    <td style={{ padding:'11px 14px', fontSize:12, color:'var(--muted)', maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.tramitacao}</td>
+                    <td style={{ padding:'11px 14px', fontSize:12 }}>
+                      {proxAud
+                        ? <span style={{ color:'var(--green)' }}>📅 {fmtData(proxAud.data)}</span>
+                        : <span style={{ color:'var(--muted)' }}>—</span>
+                      }
+                    </td>
+                  </tr>
+                );
+              })
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── DETALHE DO PROCESSO ──────────────────────────────────────────────────────
+function ProcessoDetalhe({ processo, onUpdate, onDelete, onBack }) {
+  const [aba, setAba] = useState('notas');
+  const [editando, setEditando] = useState(false);
+
+  const addNota = (texto) => {
+    const nova = { id:uid(), texto, autor:'Usuário', createdAt:now() };
+    onUpdate({ ...processo, notas:[...( processo.notas||[]), nova], updatedAt:now() });
+  };
+
+  const delNota = (id) => {
+    onUpdate({ ...processo, notas:(processo.notas||[]).filter(n=>n.id!==id), updatedAt:now() });
+  };
+
+  const addAudiencia = (aud) => {
+    onUpdate({ ...processo, audiencias:[...(processo.audiencias||[]), { id:uid(), ...aud }], updatedAt:now() });
+  };
+
+  const delAudiencia = (id) => {
+    onUpdate({ ...processo, audiencias:(processo.audiencias||[]).filter(a=>a.id!==id), updatedAt:now() });
+  };
+
+  const addArquivo = (arq) => {
+    onUpdate({ ...processo, arquivos:[...(processo.arquivos||[]), { id:uid(), ...arq, addedAt:now() }], updatedAt:now() });
+  };
+
+  const delArquivo = (id) => {
+    onUpdate({ ...processo, arquivos:(processo.arquivos||[]).filter(a=>a.id!==id), updatedAt:now() });
+  };
+
+  const fs = FASE_STYLE[processo.fase] || {};
+  const ts = TIPO_STYLE[processo.tipo] || {};
+  const ABAS = [
+    { id:'notas', label:'📝 Notas', count: (processo.notas||[]).length },
+    { id:'audiencias', label:'📅 Audiências', count: (processo.audiencias||[]).length },
+    { id:'arquivos', label:'📎 Arquivos', count: (processo.arquivos||[]).length },
+    { id:'info', label:'ℹ️ Informações' },
+  ];
+
+  if (editando) return <ProcessoForm processo={processo} onSave={p=>{onUpdate(p);setEditando(false);}} onCancel={()=>setEditando(false)} />;
+
+  return (
+    <div style={{ flex:1, overflow:'auto', padding:28 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20 }}>
+        <button className="btn-ghost" onClick={onBack}>← Voltar</button>
+        <div style={{ flex:1 }} />
+        <button className="btn-secondary" onClick={()=>setEditando(true)}>✏️ Editar</button>
+        <button className="btn-danger" onClick={()=>{ if(confirm('Excluir processo?')) onDelete(processo.id); }}>🗑️ Excluir</button>
+      </div>
+
+      <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:20, marginBottom:16 }}>
+        <div style={{ display:'flex', gap:8, marginBottom:10, flexWrap:'wrap' }}>
+          <Badge label={ts.label} color={ts.color} bg={ts.bg} />
+          <Badge label={fs.label||processo.fase} color={fs.color} bg={fs.bg} />
+          <Badge label={processo.tribunal} color="#94a3b8" bg="rgba(148,163,184,.1)" />
+        </div>
+        <div style={{ fontFamily:'monospace', fontSize:16, fontWeight:700, color:'#93c5fd', marginBottom:6 }}>{processo.numero}</div>
+        <div style={{ fontSize:18, fontWeight:700, marginBottom:4 }}>{processo.parte}</div>
+        <div style={{ fontSize:13, color:'var(--muted)' }}>{processo.tramitacao}</div>
+      </div>
+
+      <div style={{ display:'flex', gap:4, marginBottom:16 }}>
+        {ABAS.map(a => (
+          <button key={a.id} onClick={()=>setAba(a.id)}
+            style={{ padding:'8px 16px', borderRadius:8, border: aba===a.id ? '1px solid var(--blue)' : '1px solid var(--border)', background: aba===a.id ? 'rgba(59,130,246,.15)' : 'var(--surface)', color: aba===a.id ? '#93c5fd' : 'var(--muted)', fontSize:13, fontWeight: aba===a.id ? 700 : 400, cursor:'pointer' }}>
+            {a.label}{a.count > 0 && <span style={{ marginLeft:6, fontSize:10, background:'var(--surface2)', borderRadius:99, padding:'1px 5px' }}>{a.count}</span>}
+          </button>
+        ))}
+      </div>
+
+      {aba === 'notas' && <TabNotas notas={processo.notas||[]} onAdd={addNota} onDel={delNota} />}
+      {aba === 'audiencias' && <TabAudiencias audiencias={processo.audiencias||[]} onAdd={addAudiencia} onDel={delAudiencia} />}
+      {aba === 'arquivos' && <TabArquivos arquivos={processo.arquivos||[]} onAdd={addArquivo} onDel={delArquivo} />}
+      {aba === 'info' && <TabInfo processo={processo} />}
+    </div>
+  );
+}
+
+// ─── ABA NOTAS ────────────────────────────────────────────────────────────────
+function TabNotas({ notas, onAdd, onDel }) {
+  const [texto, setTexto] = useState('');
+  const submit = () => { if (!texto.trim()) return; onAdd(texto.trim()); setTexto(''); };
+  const sorted = [...notas].sort((a,b) => b.createdAt.localeCompare(a.createdAt));
+  return (
+    <div>
+      <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:16, marginBottom:16 }}>
+        <label>Nova observação</label>
+        <textarea value={texto} onChange={e=>setTexto(e.target.value)} placeholder="Registro de movimentação, decisão, prazo..." onKeyDown={e=>{if(e.key==='Enter'&&e.ctrlKey)submit();}} style={{ marginBottom:8 }} />
+        <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}>
+          <span style={{ fontSize:11, color:'var(--muted)', alignSelf:'center' }}>Ctrl+Enter para salvar</span>
+          <button className="btn-primary" onClick={submit} disabled={!texto.trim()}>Salvar nota</button>
+        </div>
+      </div>
+      {sorted.map(n => (
+        <div key={n.id} style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:10, padding:'14px 16px', marginBottom:8, display:'flex', gap:12 }}>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:13, lineHeight:1.6, whiteSpace:'pre-wrap' }}>{n.texto}</div>
+            <div style={{ fontSize:11, color:'var(--muted)', marginTop:6 }}>{n.autor} · {fmtDataHora(n.createdAt)}</div>
+          </div>
+          <button className="btn-ghost" onClick={()=>onDel(n.id)} style={{ alignSelf:'flex-start', fontSize:14 }}>✕</button>
+        </div>
+      ))}
+      {notas.length === 0 && <div style={{ color:'var(--muted)', fontSize:13, textAlign:'center', padding:'32px 0' }}>Nenhuma nota registrada.</div>}
+    </div>
+  );
+}
+
+// ─── ABA AUDIÊNCIAS ───────────────────────────────────────────────────────────
+function TabAudiencias({ audiencias, onAdd, onDel }) {
+  const [form, setForm] = useState({ data:'', hora:'', tipo:'Conciliação', local:'', obs:'' });
+  const [adicionando, setAdicionando] = useState(false);
+  const TIPOS = ['Conciliação','Instrução','Julgamento','Perícia','Mediação','Depoimento','Outro'];
+  const sorted = [...audiencias].sort((a,b)=>a.data.localeCompare(b.data));
+  const submit = () => {
+    if (!form.data || !form.tipo) return;
+    onAdd(form);
+    setForm({ data:'', hora:'', tipo:'Conciliação', local:'', obs:'' });
+    setAdicionando(false);
+  };
+  const hoje = new Date().toISOString().slice(0,10);
+  return (
+    <div>
+      {adicionando && (
+        <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:20, marginBottom:16 }}>
+          <div style={{ fontWeight:700, fontSize:14, marginBottom:14 }}>📅 Nova audiência</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
+            <div className="field"><label>Data *</label><input type="date" value={form.data} onChange={e=>setForm({...form,data:e.target.value})} /></div>
+            <div className="field"><label>Hora</label><input type="time" value={form.hora} onChange={e=>setForm({...form,hora:e.target.value})} /></div>
+            <div className="field"><label>Tipo *</label>
+              <select value={form.tipo} onChange={e=>setForm({...form,tipo:e.target.value})}>
+                {TIPOS.map(t=><option key={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="field"><label>Local</label><input value={form.local} onChange={e=>setForm({...form,local:e.target.value})} placeholder="Sala, link de videoconferência..." /></div>
+          </div>
+          <div className="field" style={{ marginBottom:12 }}><label>Observações</label><textarea value={form.obs} onChange={e=>setForm({...form,obs:e.target.value})} placeholder="Documentos necessários, pauta..." style={{ minHeight:60 }} /></div>
+          <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+            <button className="btn-secondary" onClick={()=>setAdicionando(false)}>Cancelar</button>
+            <button className="btn-primary" onClick={submit} disabled={!form.data||!form.tipo}>Salvar</button>
+          </div>
+        </div>
+      )}
+      {!adicionando && <button className="btn-primary" onClick={()=>setAdicionando(true)} style={{ marginBottom:16 }}>+ Agendar audiência</button>}
+      {sorted.map(a => {
+        const passada = a.data < hoje;
+        return (
+          <div key={a.id} style={{ background:'var(--surface)', border:`1px solid ${passada?'var(--border)':'rgba(59,130,246,.3)'}`, borderRadius:10, padding:'14px 16px', marginBottom:8, display:'flex', gap:14, alignItems:'flex-start', opacity: passada ? .7 : 1 }}>
+            <div style={{ textAlign:'center', minWidth:44 }}>
+              <div style={{ fontSize:22, fontWeight:800, color: passada ? 'var(--muted)' : 'var(--blue)', lineHeight:1 }}>{a.data.slice(8)}</div>
+              <div style={{ fontSize:10, color:'var(--muted)' }}>{['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][parseInt(a.data.slice(5,7))-1]+'/'+a.data.slice(0,4)}</div>
+            </div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontWeight:700, fontSize:14 }}>{a.tipo} {a.hora && <span style={{ color:'var(--blue)', fontWeight:400 }}>· {a.hora}</span>}</div>
+              {a.local && <div style={{ fontSize:12, color:'var(--muted)', marginTop:2 }}>📍 {a.local}</div>}
+              {a.obs && <div style={{ fontSize:12, color:'var(--muted)', marginTop:4, fontStyle:'italic' }}>{a.obs}</div>}
+              {passada && <div style={{ fontSize:10, color:'var(--muted)', marginTop:4 }}>Realizada</div>}
+            </div>
+            <button className="btn-ghost" onClick={()=>onDel(a.id)} style={{ fontSize:14 }}>✕</button>
+          </div>
+        );
+      })}
+      {audiencias.length === 0 && !adicionando && <div style={{ color:'var(--muted)', fontSize:13, textAlign:'center', padding:'32px 0' }}>Nenhuma audiência agendada.</div>}
+    </div>
+  );
+}
+
+// ─── ABA ARQUIVOS ─────────────────────────────────────────────────────────────
+function TabArquivos({ arquivos, onAdd, onDel }) {
+  const inputRef = useRef();
+  const [urlForm, setUrlForm] = useState({ nome:'', url:'' });
+  const [modoUrl, setModoUrl] = useState(false);
+
+  const handleFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { alert('Arquivo muito grande. Máximo: 5 MB.'); return; }
+    const reader = new FileReader();
+    reader.onload = ev => onAdd({ nome:file.name, tipo:file.type, tamanho:file.size, base64:ev.target.result, url:null });
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleUrl = () => {
+    if (!urlForm.nome || !urlForm.url) return;
+    onAdd({ nome:urlForm.nome, tipo:'link', tamanho:0, base64:null, url:urlForm.url });
+    setUrlForm({ nome:'', url:'' });
+    setModoUrl(false);
+  };
+
+  const fileIcon = (tipo) => {
+    if (!tipo) return '📄';
+    if (tipo.includes('pdf')) return '📕';
+    if (tipo.includes('word') || tipo.includes('docx')) return '📝';
+    if (tipo.includes('sheet') || tipo.includes('xlsx')) return '📊';
+    if (tipo.includes('image')) return '🖼️';
+    if (tipo === 'link') return '🔗';
+    return '📄';
+  };
+
+  return (
+    <div>
+      <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+        <button className="btn-primary" onClick={()=>inputRef.current.click()}>📎 Anexar arquivo</button>
+        <button className="btn-secondary" onClick={()=>setModoUrl(!modoUrl)}>🔗 Adicionar link</button>
+        <input ref={inputRef} type="file" style={{ display:'none' }} onChange={handleFile} />
+      </div>
+
+      {modoUrl && (
+        <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:10, padding:16, marginBottom:12, display:'flex', gap:10, alignItems:'flex-end' }}>
+          <div className="field" style={{ flex:1 }}><label>Nome / descrição</label><input value={urlForm.nome} onChange={e=>setUrlForm({...urlForm,nome:e.target.value})} placeholder="ex: Petição Inicial" /></div>
+          <div className="field" style={{ flex:2 }}><label>URL (SharePoint, OneDrive, etc.)</label><input value={urlForm.url} onChange={e=>setUrlForm({...urlForm,url:e.target.value})} placeholder="https://..." /></div>
+          <button className="btn-primary" onClick={handleUrl} disabled={!urlForm.nome||!urlForm.url}>Salvar</button>
+          <button className="btn-secondary" onClick={()=>setModoUrl(false)}>✕</button>
+        </div>
+      )}
+
+      <div style={{ fontSize:11, color:'var(--muted)', marginBottom:12 }}>
+        Arquivos salvos no navegador (máx. 5 MB por arquivo). Para arquivos grandes, use links.
+      </div>
+
+      {arquivos.map(a => (
+        <div key={a.id} style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:10, padding:'12px 16px', marginBottom:8, display:'flex', gap:12, alignItems:'center' }}>
+          <span style={{ fontSize:24 }}>{fileIcon(a.tipo)}</span>
+          <div style={{ flex:1 }}>
+            <div style={{ fontWeight:600, fontSize:13 }}>{a.nome}</div>
+            <div style={{ fontSize:11, color:'var(--muted)' }}>{a.tipo === 'link' ? 'Link externo' : fmtTamanho(a.tamanho)} · {fmtDataHora(a.addedAt)}</div>
+          </div>
+          {a.base64 && <a href={a.base64} download={a.nome} style={{ color:'var(--blue)', fontSize:12, textDecoration:'none', padding:'4px 10px', border:'1px solid rgba(59,130,246,.3)', borderRadius:6 }}>Baixar</a>}
+          {a.url && <a href={a.url} target="_blank" style={{ color:'var(--blue)', fontSize:12, textDecoration:'none', padding:'4px 10px', border:'1px solid rgba(59,130,246,.3)', borderRadius:6 }}>Abrir</a>}
+          <button className="btn-ghost" onClick={()=>onDel(a.id)} style={{ fontSize:14 }}>✕</button>
+        </div>
+      ))}
+      {arquivos.length === 0 && <div style={{ color:'var(--muted)', fontSize:13, textAlign:'center', padding:'32px 0' }}>Nenhum arquivo anexado.</div>}
+    </div>
+  );
+}
+
+// ─── ABA INFO ─────────────────────────────────────────────────────────────────
+function TabInfo({ processo }) {
+  const rows = [
+    ['Número', processo.numero], ['Tipo', TIPO_STYLE[processo.tipo]?.label],
+    ['Fase', processo.fase], ['Tribunal/Órgão', processo.tribunal],
+    ['Parte contrária', processo.parte], ['Tramitação', processo.tramitacao],
+    ['Criado em', fmtDataHora(processo.createdAt)], ['Atualizado', fmtDataHora(processo.updatedAt)],
+  ];
+  return (
+    <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, overflow:'hidden' }}>
+      {rows.map(([k,v]) => (
+        <div key={k} style={{ display:'flex', padding:'12px 18px', borderBottom:'1px solid var(--border)' }}>
+          <div style={{ width:160, fontSize:12, color:'var(--muted)', fontWeight:600, textTransform:'uppercase', letterSpacing:'.04em', flexShrink:0 }}>{k}</div>
+          <div style={{ fontSize:13 }}>{v || '—'}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── FORMULÁRIO DE PROCESSO ───────────────────────────────────────────────────
+function ProcessoForm({ processo, onSave, onCancel }) {
+  const blank = { numero:'', tipo:'juridico', fase:'Conhecimento', parte:'', tribunal:'', tramitacao:'', audiencias:[], arquivos:[], notas:[], createdAt:now(), updatedAt:now() };
+  const [form, setForm] = useState(processo || blank);
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+  const submit = () => {
+    if (!form.numero || !form.parte) { alert('Número e parte são obrigatórios.'); return; }
+    onSave({ ...form, id: form.id || uid(), updatedAt:now() });
+  };
+  return (
+    <div style={{ flex:1, overflow:'auto', padding:28 }}>
+      <div style={{ fontWeight:800, fontSize:18, marginBottom:20 }}>{processo ? 'Editar processo' : 'Novo processo'}</div>
+      <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:24, maxWidth:700 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 }}>
+          <div className="field" style={{ gridColumn:'1/-1' }}>
+            <label>Número do processo *</label>
+            <input value={form.numero} onChange={e=>set('numero',e.target.value)} placeholder="0000000-00.0000.0.00.0000" />
+          </div>
+          <div className="field">
+            <label>Tipo *</label>
+            <select value={form.tipo} onChange={e=>set('tipo',e.target.value)}>
+              <option value="juridico">⚖️ Jurídico (Judicial)</option>
+              <option value="administrativo">🏛️ Administrativo</option>
+            </select>
+          </div>
+          <div className="field">
+            <label>Fase *</label>
+            <select value={form.fase} onChange={e=>set('fase',e.target.value)}>
+              <option>Conhecimento</option><option>Execução</option><option>Arquivado</option>
+            </select>
+          </div>
+          <div className="field" style={{ gridColumn:'1/-1' }}>
+            <label>Parte contrária *</label>
+            <input value={form.parte} onChange={e=>set('parte',e.target.value)} placeholder="Nome da parte contrária" />
+          </div>
+          <div className="field">
+            <label>Tribunal / Órgão</label>
+            <input value={form.tribunal} onChange={e=>set('tribunal',e.target.value)} placeholder="TJGO, TRT18, MPT..." />
+          </div>
+          <div className="field">
+            <label>Vara / Tramitação</label>
+            <input value={form.tramitacao} onChange={e=>set('tramitacao',e.target.value)} placeholder="1ª Vara Cível - Goiânia/GO" />
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+          <button className="btn-secondary" onClick={onCancel}>Cancelar</button>
+          <button className="btn-primary" onClick={submit}>Salvar processo</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── AGENDA ───────────────────────────────────────────────────────────────────
+function Agenda({ processos, setProcessoAberto, setView }) {
+  const [mes, setMes] = useState(() => new Date().toISOString().slice(0,7));
+  const [mesDate, setMesDate] = useState(() => new Date());
+
+  const mudarMes = (delta) => {
+    const d = new Date(mesDate.getFullYear(), mesDate.getMonth() + delta, 1);
+    setMesDate(d);
+    setMes(d.toISOString().slice(0,7));
+  };
+
+  const audiencias = processos.flatMap(p =>
+    (p.audiencias||[]).filter(a => a.data.startsWith(mes)).map(a => ({ ...a, processo: p }))
+  ).sort((a,b) => a.data.localeCompare(b.data));
+
+  const dias = {};
+  audiencias.forEach(a => { if (!dias[a.data]) dias[a.data] = []; dias[a.data].push(a); });
+
+  const hoje = new Date().toISOString().slice(0,10);
+  const nomeMes = mesDate.toLocaleDateString('pt-BR', { month:'long', year:'numeric' });
+
+  return (
+    <div style={{ flex:1, overflow:'auto', padding:28 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:24 }}>
+        <button className="btn-secondary" onClick={()=>mudarMes(-1)}>←</button>
+        <div style={{ fontWeight:800, fontSize:18, textTransform:'capitalize', minWidth:200, textAlign:'center' }}>{nomeMes}</div>
+        <button className="btn-secondary" onClick={()=>mudarMes(1)}>→</button>
+        <div style={{ marginLeft:'auto', fontSize:13, color:'var(--muted)' }}>{audiencias.length} audiência(s) neste mês</div>
+      </div>
+
+      {Object.keys(dias).length === 0 ? (
+        <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:48, textAlign:'center', color:'var(--muted)' }}>
+          <div style={{ fontSize:48, marginBottom:12 }}>📅</div>
+          <div>Nenhuma audiência em {nomeMes}.</div>
+        </div>
+      ) : (
+        Object.entries(dias).map(([data, auds]) => (
+          <div key={data} style={{ marginBottom:16 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+              <div style={{ fontWeight:700, fontSize:15, color: data === hoje ? 'var(--green)' : 'var(--text)' }}>
+                {data === hoje && '🟢 '}{fmtDataExtenso(data)}
+              </div>
+              <div style={{ flex:1, height:1, background:'var(--border)' }} />
+            </div>
+            {auds.map(a => (
+              <div key={a.id} onClick={() => { setProcessoAberto(a.processo); setView('detalhe'); }}
+                style={{ background:'var(--surface)', border:'1px solid rgba(59,130,246,.3)', borderRadius:10, padding:'12px 16px', marginBottom:6, cursor:'pointer', display:'flex', gap:14, alignItems:'center' }}
+                onMouseEnter={e=>e.currentTarget.style.borderColor='var(--blue)'}
+                onMouseLeave={e=>e.currentTarget.style.borderColor='rgba(59,130,246,.3)'}>
+                <div style={{ fontWeight:700, color:'var(--blue)', minWidth:50, fontSize:14 }}>{a.hora||'—'}</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:600, fontSize:14 }}>{a.tipo}</div>
+                  <div style={{ fontSize:12, color:'var(--muted)' }}>{a.processo.parte} · {a.processo.tribunal}</div>
+                  {a.local && <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>📍 {a.local}</div>}
+                </div>
+                <Badge label={TIPO_STYLE[a.processo.tipo]?.label} color={TIPO_STYLE[a.processo.tipo]?.color} bg={TIPO_STYLE[a.processo.tipo]?.bg} />
+              </div>
+            ))}
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+// ─── IA JURÍDICA ──────────────────────────────────────────────────────────────
+function IAChat({ processos, claudeKey }) {
+  const [msgs, setMsgs] = useState([
+    { role:'assistant', content:'Olá! Sou seu assistente jurídico. Posso analisar seus processos, identificar prazos críticos, resumir situações e responder perguntas sobre seu portfólio jurídico. Como posso ajudar?' }
+  ]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const endRef = useRef();
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior:'smooth' }); }, [msgs]);
+
+  const buildContext = () => {
+    const ativos = processos.filter(p => p.fase !== 'Arquivado');
+    const hoje = new Date().toISOString().slice(0,10);
+    const proxAuds = processos.flatMap(p =>
+      (p.audiencias||[]).filter(a => a.data >= hoje).map(a => `${a.data} - ${a.tipo} (${p.numero} / ${p.parte})`)
+    ).slice(0,10);
+
+    const lista = ativos.map(p => {
+      const notas = (p.notas||[]).slice(-3).map(n=>n.texto).join('; ');
+      return `[${p.tipo.toUpperCase()}] ${p.numero} | Fase: ${p.fase} | Parte: ${p.parte} | ${p.tribunal} | ${p.tramitacao}${notas ? ` | Notas: ${notas}` : ''}`;
+    }).join('\n');
+
+    return `Você é o assistente jurídico interno da empresa DB Machado LTDA / Rede Forte Construções.
+
+PROCESSOS ATIVOS (${ativos.length} de ${processos.length} total):
+${lista}
+
+PRÓXIMAS AUDIÊNCIAS:
+${proxAuds.length ? proxAuds.join('\n') : 'Nenhuma audiência agendada'}
+
+Responda em português, de forma objetiva e direta. Destaque urgências e prazos críticos quando relevante.`;
+  };
+
+  const enviar = async () => {
+    if (!input.trim() || loading) return;
+    if (!claudeKey) { setMsgs(m=>[...m, { role:'assistant', content:'⚙️ Configure a chave da API Claude em Configurações para usar a IA.' }]); setInput(''); return; }
+
+    const novaMsg = { role:'user', content:input.trim() };
+    setMsgs(m => [...m, novaMsg]);
+    setInput('');
+    setLoading(true);
+
+    try {
+      const history = msgs.filter(m=>m.role!=='system').slice(-8);
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method:'POST',
+        headers:{
+          'x-api-key': claudeKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model:'claude-sonnet-4-6',
+          max_tokens: 1024,
+          system: buildContext(),
+          messages: [...history, novaMsg],
+        })
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || 'Erro na API'); }
+      const data = await res.json();
+      setMsgs(m => [...m, { role:'assistant', content: data.content[0].text }]);
+    } catch(e) {
+      setMsgs(m => [...m, { role:'assistant', content:`❌ Erro: ${e.message}` }]);
+    } finally { setLoading(false); }
+  };
+
+  const sugestoes = ['Quais processos têm prazo urgente?', 'Resumo das execuções em andamento', 'Processos com descumprimento de acordo', 'Situação dos processos no TRT10', 'Análise de risco geral'];
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', padding:28, gap:16 }}>
+      <div style={{ fontWeight:800, fontSize:18 }}>🤖 IA Jurídica</div>
+      {!claudeKey && (
+        <div style={{ background:'rgba(245,158,11,.08)', border:'1px solid rgba(245,158,11,.3)', borderRadius:10, padding:'10px 14px', fontSize:13, color:'#fcd34d' }}>
+          ⚙️ Configure a chave Claude em <strong>Configurações</strong> para ativar a IA.
+        </div>
+      )}
+      <div style={{ flex:1, background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:16, overflowY:'auto', display:'flex', flexDirection:'column', gap:12, minHeight:0 }}>
+        {msgs.map((m,i) => (
+          <div key={i} style={{ display:'flex', justifyContent: m.role==='user' ? 'flex-end' : 'flex-start' }}>
+            <div style={{ maxWidth:'80%', padding:'10px 14px', borderRadius:12, background: m.role==='user' ? 'linear-gradient(135deg,var(--blue),#1d4ed8)' : 'var(--surface2)', color:'var(--text)', fontSize:13, lineHeight:1.6, border: m.role==='assistant' ? '1px solid var(--border)' : 'none', whiteSpace:'pre-wrap' }}>
+              {m.role==='assistant' && <div style={{ fontSize:10, color:'var(--blue)', fontWeight:700, marginBottom:4 }}>⚖️ ASSISTENTE JURÍDICO</div>}
+              {m.content}
+            </div>
+          </div>
+        ))}
+        {loading && (
+          <div style={{ display:'flex' }}>
+            <div style={{ padding:'10px 14px', borderRadius:12, background:'var(--surface2)', border:'1px solid var(--border)', color:'var(--muted)', fontSize:13 }}>Analisando... ⏳</div>
+          </div>
+        )}
+        <div ref={endRef} />
+      </div>
+      <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+        {sugestoes.map(s => (
+          <button key={s} onClick={()=>setInput(s)} style={{ padding:'5px 12px', borderRadius:99, border:'1px solid var(--border)', background:'transparent', color:'var(--muted)', fontSize:11, cursor:'pointer' }}>{s}</button>
+        ))}
+      </div>
+      <div style={{ display:'flex', gap:10 }}>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&enviar()} placeholder="Pergunte sobre processos, prazos, riscos..." style={{ flex:1 }} />
+        <button className="btn-primary" onClick={enviar} disabled={loading||!input.trim()}>Enviar →</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── CONFIGURAÇÕES ────────────────────────────────────────────────────────────
+function Configuracoes({ config, onSave }) {
+  const [key, setKey] = useState(config.claudeKey||'');
+  return (
+    <div style={{ flex:1, overflow:'auto', padding:28 }}>
+      <div style={{ fontWeight:800, fontSize:18, marginBottom:20 }}>⚙️ Configurações</div>
+      <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:24, maxWidth:600 }}>
+        <div className="field" style={{ marginBottom:16 }}>
+          <label>Chave API Claude (Anthropic)</label>
+          <input type="password" value={key} onChange={e=>setKey(e.target.value)} placeholder="sk-ant-..." />
+          <div style={{ fontSize:11, color:'var(--muted)', marginTop:4 }}>
+            Necessária para usar a IA. Obtenha em console.anthropic.com. A chave fica salva apenas no seu navegador.
+          </div>
+        </div>
+        <button className="btn-primary" onClick={()=>onSave({...config,claudeKey:key})}>Salvar configurações</button>
+      </div>
+
+      <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:24, maxWidth:600, marginTop:16 }}>
+        <div style={{ fontWeight:700, fontSize:14, marginBottom:12 }}>🗂️ Dados</div>
+        <div style={{ fontSize:13, color:'var(--muted)', marginBottom:12 }}>Todos os dados são salvos localmente no navegador (localStorage). Nenhuma informação é enviada a servidores externos.</div>
+        <div style={{ display:'flex', gap:8 }}>
+          <button className="btn-secondary" onClick={() => {
+            const data = localStorage.getItem(STORAGE_KEY);
+            if (!data) return;
+            const blob = new Blob([data], { type:'application/json' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'backup_juridico.json'; a.click();
+          }}>⬇️ Exportar backup</button>
+          <button className="btn-danger" onClick={() => { if(confirm('Isso apagará TODOS os dados. Confirma?')) { localStorage.removeItem(STORAGE_KEY); location.reload(); }}}>🗑️ Apagar todos os dados</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── UTILITÁRIOS ──────────────────────────────────────────────────────────────
+function fmtData(s) {
+  if (!s) return '—';
+  const [y,m,d] = s.split('-');
+  return `${d}/${m}/${y}`;
+}
+function fmtDataExtenso(s) {
+  if (!s) return '';
+  return new Date(s + 'T12:00:00').toLocaleDateString('pt-BR', { weekday:'long', day:'numeric', month:'long' });
+}
+function fmtDataHora(s) {
+  if (!s) return '—';
+  return new Date(s).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+function fmtTamanho(b) {
+  if (!b) return '';
+  if (b < 1024) return `${b} B`;
+  if (b < 1024*1024) return `${(b/1024).toFixed(1)} KB`;
+  return `${(b/1024/1024).toFixed(1)} MB`;
+}
+
+// ─── APP PRINCIPAL ────────────────────────────────────────────────────────────
+function App() {
+  const [data, setData] = useState(() => loadData());
+  const [view, setView] = useState('dashboard');
+  const [processoAberto, setProcessoAberto] = useState(null);
+  const [adicionando, setAdicionando] = useState(null); // 'juridico' | 'administrativo'
+
+  const { processos, config } = data;
+
+  const salvar = useCallback((novoData) => {
+    setData(novoData);
+    saveData(novoData);
+  }, []);
+
+  const updateProcesso = useCallback((proc) => {
+    salvar({ ...data, processos: processos.map(p => p.id === proc.id ? proc : p) });
+    if (processoAberto?.id === proc.id) setProcessoAberto(proc);
+  }, [data, processos, processoAberto, salvar]);
+
+  const addProcesso = useCallback((proc) => {
+    salvar({ ...data, processos: [proc, ...processos] });
+    setAdicionando(null);
+    setProcessoAberto(proc);
+    setView('detalhe');
+  }, [data, processos, salvar]);
+
+  const delProcesso = useCallback((id) => {
+    salvar({ ...data, processos: processos.filter(p => p.id !== id) });
+    setProcessoAberto(null);
+    setView('dashboard');
+  }, [data, processos, salvar]);
+
+  const saveConfig = useCallback((cfg) => {
+    salvar({ ...data, config: cfg });
+  }, [data, salvar]);
+
+  const counts = {
+    juridico: processos.filter(p=>p.tipo==='juridico'&&p.fase!=='Arquivado').length,
+    adm: processos.filter(p=>p.tipo==='administrativo'&&p.fase!=='Arquivado').length,
+    agenda: processos.flatMap(p=>(p.audiencias||[]).filter(a=>a.data>=new Date().toISOString().slice(0,10))).length,
+  };
+
+  let mainContent;
+  if (adicionando) {
+    mainContent = <ProcessoForm onSave={addProcesso} onCancel={()=>setAdicionando(null)} processo={null} />;
+  } else if (view === 'detalhe' && processoAberto) {
+    mainContent = <ProcessoDetalhe processo={processoAberto} onUpdate={updateProcesso} onDelete={delProcesso} onBack={() => { setView(processoAberto.tipo === 'juridico' ? 'juridico' : 'adm'); setProcessoAberto(null); }} />;
+  } else if (view === 'dashboard') {
+    mainContent = <Dashboard processos={processos} setView={setView} setProcessoAberto={setProcessoAberto} />;
+  } else if (view === 'juridico') {
+    mainContent = <ProcessoList processos={processos} tipo="juridico" setProcessoAberto={setProcessoAberto} setView={setView} onAdd={()=>setAdicionando('juridico')} />;
+  } else if (view === 'adm') {
+    mainContent = <ProcessoList processos={processos} tipo="administrativo" setProcessoAberto={setProcessoAberto} setView={setView} onAdd={()=>setAdicionando('administrativo')} />;
+  } else if (view === 'agenda') {
+    mainContent = <Agenda processos={processos} setProcessoAberto={setProcessoAberto} setView={setView} />;
+  } else if (view === 'ia') {
+    mainContent = <IAChat processos={processos} claudeKey={config.claudeKey} />;
+  } else if (view === 'config') {
+    mainContent = <Configuracoes config={config} onSave={saveConfig} />;
+  }
+
+  return (
+    <React.Fragment>
+      <Sidebar view={adicionando ? '' : view} setView={(v)=>{setView(v);setAdicionando(null);setProcessoAberto(null);}} counts={counts} />
+      <div style={{ flex:1, display:'flex', flexDirection:'column', minWidth:0 }}>
+        {mainContent}
+      </div>
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
