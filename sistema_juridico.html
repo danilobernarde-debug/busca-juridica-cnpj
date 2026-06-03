@@ -55,7 +55,7 @@ const sbClient = (window.SUPABASE_URL && window.SUPABASE_KEY && window.supabase)
 async function sb_carregar() {
   const { data, error } = await sbClient
     .from('jud_processos')
-    .select('*, jud_audiencias(*), jud_notas(*), jud_arquivos(*)')
+    .select('*, jud_audiencias(*), jud_notas(*), jud_arquivos(*), jud_partes(*)')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data.map(p => ({
@@ -66,6 +66,7 @@ async function sb_carregar() {
     parte: p.parte || '',
     tribunal: p.tribunal || '',
     tramitacao: p.tramitacao || '',
+    partes: (p.jud_partes || []).map(pt => ({ id:pt.id, nome:pt.nome, documento:pt.documento||'', polo:pt.polo, tipo_pessoa:pt.tipo_pessoa||'' })),
     audiencias: (p.jud_audiencias || [])
       .sort((a,b) => a.data.localeCompare(b.data))
       .map(a => ({ id:a.id, data:a.data, hora:a.hora?.slice(0,5)||'', tipo:a.tipo||'', local:a.local||'', obs:a.obs||'' })),
@@ -109,6 +110,14 @@ async function sb_salvar(proc) {
   if (proc.arquivos?.length) {
     const { error } = await sbClient.from('jud_arquivos').insert(
       proc.arquivos.map(f => ({ id:f.id, processo_id:pid, nome:f.nome, tipo:f.tipo||'', tamanho:f.tamanho||0, tamanho_comprimido:f.tamanhoComprimido||0, base64:f.base64||null, url_externa:f.url||null }))
+    );
+    if (error) throw error;
+  }
+
+  await sbClient.from('jud_partes').delete().eq('processo_id', pid);
+  if (proc.partes?.length) {
+    const { error } = await sbClient.from('jud_partes').insert(
+      proc.partes.map(pt => ({ id:pt.id, processo_id:pid, nome:pt.nome, documento:pt.documento||null, polo:pt.polo, tipo_pessoa:pt.tipo_pessoa||null }))
     );
     if (error) throw error;
   }
@@ -176,7 +185,12 @@ const PROCESSOS_INICIAIS = [
 
 // ─── STORAGE ─────────────────────────────────────────────────────────────────
 const STORAGE_KEY = 'sj_db_machado_v2';
-const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+const uid = () => crypto.randomUUID
+  ? crypto.randomUUID()
+  : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
 const now = () => new Date().toISOString();
 
 function loadData() {
@@ -237,7 +251,7 @@ function Login() {
   };
 
   return (
-    <div style={{ minHeight:'100vh', background:'var(--bg)', display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
+    <div style={{ flex:1, width:'100%', background:'var(--bg)', display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
       <div style={{ width:'100%', maxWidth:400 }}>
         <div style={{ textAlign:'center', marginBottom:32 }}>
           <div style={{ fontSize:48, marginBottom:12 }}>⚖️</div>
@@ -582,6 +596,7 @@ function ProcessoDetalhe({ processo, onUpdate, onDelete, onBack }) {
   const ABAS = [
     { id:'notas', label:'📝 Notas', count: (processo.notas||[]).length },
     { id:'audiencias', label:'📅 Audiências', count: (processo.audiencias||[]).length },
+    { id:'partes', label:'👥 Partes', count: (processo.partes||[]).length },
     { id:'arquivos', label:'📎 Arquivos', count: (processo.arquivos||[]).length },
     { id:'info', label:'ℹ️ Informações' },
   ];
@@ -619,8 +634,76 @@ function ProcessoDetalhe({ processo, onUpdate, onDelete, onBack }) {
 
       {aba === 'notas' && <TabNotas notas={processo.notas||[]} onAdd={addNota} onDel={delNota} />}
       {aba === 'audiencias' && <TabAudiencias audiencias={processo.audiencias||[]} onAdd={addAudiencia} onDel={delAudiencia} />}
+      {aba === 'partes' && <TabPartes partes={processo.partes||[]} onUpdate={ps => onUpdate({...processo, partes:ps, updatedAt:now()})} />}
       {aba === 'arquivos' && <TabArquivos arquivos={processo.arquivos||[]} onAdd={addArquivo} onDel={delArquivo} />}
       {aba === 'info' && <TabInfo processo={processo} />}
+    </div>
+  );
+}
+
+// ─── ABA PARTES ───────────────────────────────────────────────────────────────
+function TabPartes({ partes, onUpdate }) {
+  const [adicionando, setAdicionando] = useState(false);
+  const [form, setForm] = useState({ nome:'', documento:'', polo:'ativo', tipo_pessoa:'juridica' });
+  const POLOS = [{ v:'ativo', label:'Polo Ativo', cor:'var(--green)' }, { v:'passivo', label:'Polo Passivo', cor:'var(--red)' }, { v:'outro', label:'Outro', cor:'var(--muted)' }];
+
+  const adicionar = () => {
+    if (!form.nome.trim()) return;
+    onUpdate([...partes, { id:uid(), ...form }]);
+    setForm({ nome:'', documento:'', polo:'ativo', tipo_pessoa:'juridica' });
+    setAdicionando(false);
+  };
+
+  const remover = (id) => onUpdate(partes.filter(p => p.id !== id));
+
+  const grupos = { ativo: partes.filter(p=>p.polo==='ativo'), passivo: partes.filter(p=>p.polo==='passivo'), outro: partes.filter(p=>p.polo==='outro') };
+
+  return (
+    <div>
+      {POLOS.map(polo => grupos[polo.v].length > 0 && (
+        <div key={polo.v} style={{ marginBottom:16 }}>
+          <div style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em', color:polo.cor, marginBottom:8 }}>{polo.label}</div>
+          {grupos[polo.v].map(pt => (
+            <div key={pt.id} style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:8, padding:'10px 14px', marginBottom:6, display:'flex', alignItems:'center', gap:12 }}>
+              <div style={{ flex:1 }}>
+                <div style={{ fontWeight:600, fontSize:14 }}>{pt.nome}</div>
+                {pt.documento && <div style={{ fontSize:12, color:'var(--muted)', marginTop:2, fontFamily:'monospace' }}>{pt.documento}</div>}
+              </div>
+              <button className="btn-ghost" onClick={() => remover(pt.id)} style={{ fontSize:14 }}>✕</button>
+            </div>
+          ))}
+        </div>
+      ))}
+
+      {adicionando ? (
+        <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:10, padding:16, marginTop:8 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+            <div className="field" style={{ gridColumn:'1/-1' }}><label>Nome *</label><input value={form.nome} onChange={e=>setForm({...form,nome:e.target.value})} placeholder="Nome completo" autoFocus /></div>
+            <div className="field"><label>CPF / CNPJ</label><input value={form.documento} onChange={e=>setForm({...form,documento:e.target.value})} placeholder="000.000.000-00" /></div>
+            <div className="field"><label>Tipo</label>
+              <select value={form.tipo_pessoa} onChange={e=>setForm({...form,tipo_pessoa:e.target.value})}>
+                <option value="juridica">Pessoa Jurídica</option>
+                <option value="fisica">Pessoa Física</option>
+              </select>
+            </div>
+            <div className="field" style={{ gridColumn:'1/-1' }}><label>Polo</label>
+              <select value={form.polo} onChange={e=>setForm({...form,polo:e.target.value})}>
+                {POLOS.map(p => <option key={p.v} value={p.v}>{p.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+            <button className="btn-secondary" onClick={()=>setAdicionando(false)}>Cancelar</button>
+            <button className="btn-primary" onClick={adicionar} disabled={!form.nome.trim()}>Adicionar</button>
+          </div>
+        </div>
+      ) : (
+        <button className="btn-primary" onClick={()=>setAdicionando(true)} style={{ marginTop:8 }}>+ Adicionar parte</button>
+      )}
+
+      {partes.length === 0 && !adicionando && (
+        <div style={{ color:'var(--muted)', fontSize:13, textAlign:'center', padding:'32px 0' }}>Nenhuma parte cadastrada.</div>
+      )}
     </div>
   );
 }
@@ -1266,9 +1349,12 @@ function App() {
           processos={processos}
           onFechar={() => setShowDJE(false)}
           onSalvar={async ({ tipo, processo }) => {
-            if (tipo === 'criar') { await addProcesso(processo); }
-            else { await updateProcesso(processo); setProcessoAberto(processo); setView('detalhe'); }
+            if (tipo === 'criar') await addProcesso(processo);
+            else await updateProcesso(processo);
+          }}
+          onConcluido={(ultimo) => {
             setShowDJE(false);
+            if (ultimo) { setProcessoAberto(ultimo); setView('detalhe'); }
           }}
         />
       )}
@@ -1501,7 +1587,7 @@ async function processarUmArquivo(file, processos, claudeKey) {
 }
 
 // ─── MODAL DE IMPORT DJE ─────────────────────────────────────────────────────
-function ModalDJE({ onSalvar, onFechar, claudeKey, processos }) {
+function ModalDJE({ onSalvar, onFechar, onConcluido, claudeKey, processos }) {
   const [estado, setEstado] = useState('idle'); // idle | processando | revisao | concluido
   const [fila, setFila] = useState([]);       // { file, status, resultado, erro }
   const [atual, setAtual] = useState(0);
@@ -1510,9 +1596,10 @@ function ModalDJE({ onSalvar, onFechar, claudeKey, processos }) {
   const [arqInfo, setArqInfo] = useState(null);
   const inputRef = useRef();
 
-  const extraidosRef = useRef([]);   // { nome, resultado }[]
-  const indiceRef   = useRef(0);
-  const decisoesRef = useRef([]);    // { acao:'salvar'|'pular', form }[] — um por índice
+  const extraidosRef  = useRef([]);
+  const indiceRef     = useRef(0);
+  const decisoesRef   = useRef([]);
+  const [ultimoSalvo, setUltimoSalvo] = useState(null);
 
   const formParaProcesso = (f) => {
     const r = f._resultado;
@@ -1599,16 +1686,21 @@ function ModalDJE({ onSalvar, onFechar, claudeKey, processos }) {
     abrirItem(origem);
   };
 
-  const finalizarTudo = () => {
+  const finalizarTudo = async () => {
     const decisoes = decisoesRef.current;
-    decisoes.forEach(d => {
-      if (d?.acao === 'salvar') onSalvar({ tipo: d.form._resultado.tipo, processo: formParaProcesso(d.form) });
-    });
+    let ultimoSalvo = null;
+    for (const d of decisoes) {
+      if (d?.acao === 'salvar') {
+        await onSalvar({ tipo: d.form._resultado.tipo, processo: formParaProcesso(d.form) });
+        ultimoSalvo = formParaProcesso(d.form);
+      }
+    }
     setFila(prev => prev.map((item, i) => {
       const d = decisoes[i];
       if (!d) return item;
       return { ...item, status: d.acao === 'salvar' ? 'ok' : 'pulado', resultado: d.form?._resultado };
     }));
+    setUltimoSalvo(ultimoSalvo);
     setEstado('concluido');
   };
 
@@ -1767,8 +1859,8 @@ function ModalDJE({ onSalvar, onFechar, claudeKey, processos }) {
               );
             })}
             <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:20 }}>
-              <button className="btn-secondary" onClick={() => { setEstado('idle'); setFila([]); setAtual(0); }}>Importar mais</button>
-              <button className="btn-primary" onClick={onFechar}>Fechar</button>
+              <button className="btn-secondary" onClick={() => { setEstado('idle'); setFila([]); setAtual(0); setUltimoSalvo(null); }}>Importar mais</button>
+              <button className="btn-primary" onClick={() => onConcluido ? onConcluido(ultimoSalvo) : onFechar()}>Fechar</button>
             </div>
           </div>
         )}
