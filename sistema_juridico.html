@@ -781,8 +781,13 @@ function IAChat({ processos, claudeKey }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const endRef = useRef();
+  const containerRef = useRef();
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior:'smooth' }); }, [msgs]);
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [msgs, loading]);
 
   const buildContext = () => {
     const ativos = processos.filter(p => p.fase !== 'Arquivado');
@@ -851,7 +856,7 @@ Responda em português, de forma objetiva e direta. Destaque urgências e prazos
           ⚙️ Configure a chave Claude em <strong>Configurações</strong> para ativar a IA.
         </div>
       )}
-      <div style={{ flex:1, background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:16, overflowY:'auto', display:'flex', flexDirection:'column', gap:12, minHeight:0 }}>
+      <div ref={containerRef} style={{ flex:1, background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:16, overflowY:'auto', display:'flex', flexDirection:'column', gap:12, minHeight:0 }}>
         {msgs.map((m,i) => (
           <div key={i} style={{ display:'flex', justifyContent: m.role==='user' ? 'flex-end' : 'flex-start' }}>
             <div style={{ maxWidth:'80%', padding:'10px 14px', borderRadius:12, background: m.role==='user' ? 'linear-gradient(135deg,var(--blue),#1d4ed8)' : 'var(--surface2)', color:'var(--text)', fontSize:13, lineHeight:1.6, border: m.role==='assistant' ? '1px solid var(--border)' : 'none', whiteSpace:'pre-wrap' }}>
@@ -1192,133 +1197,143 @@ function uint8ToBase64(u8) {
   return btoa(bin);
 }
 
+// ─── HELPER: processa um único arquivo e retorna { tipo, processo } ──────────
+async function processarUmArquivo(file, processos, claudeKey) {
+  const arrayBuffer = await file.arrayBuffer();
+  const { texto, escaneado } = await extrairTextoPDF(file);
+
+  let dados;
+  if (!escaneado) {
+    dados = parsearDJE(texto);
+  } else {
+    if (!claudeKey) throw new Error('SEMCHAVE');
+    dados = await extrairComIA(file, claudeKey);
+  }
+
+  const comprimido = await comprimirArquivo(arrayBuffer);
+  const base64 = comprimido
+    ? 'data:application/gzip;base64,' + uint8ToBase64(comprimido)
+    : 'data:application/pdf;base64,' + uint8ToBase64(new Uint8Array(arrayBuffer));
+
+  const arq = {
+    id: uid(), nome: file.name,
+    tipo: comprimido ? 'application/gzip' : 'application/pdf',
+    tamanho: file.size, tamanhoComprimido: comprimido ? comprimido.length : file.size,
+    base64, url: null, addedAt: now(),
+  };
+  const aud = dados.data ? [{
+    id: uid(), data: dados.data, hora: dados.hora,
+    tipo: dados.tipoAud, local: dados.local, obs: '',
+  }] : [];
+
+  const existente = dados.num && processos.find(p =>
+    p.numero.replace(/[\s.\-\/]/g,'') === dados.num.replace(/[\s.\-\/]/g,'')
+  );
+
+  if (existente) {
+    const atualizado = {
+      ...existente,
+      audiencias: [...(existente.audiencias||[]), ...aud],
+      arquivos:   [...(existente.arquivos||[]), arq],
+      notas: [...(existente.notas||[]), {
+        id: uid(),
+        texto: `Notificação DJE recebida${dados.data ? ` — Audiência ${dados.tipoAud} em ${fmtData(dados.data)}${dados.hora?' às '+dados.hora:''}` : ''}`,
+        autor: 'Importado DJE', createdAt: now(),
+      }],
+      updatedAt: now(),
+    };
+    return { tipo: 'atualizar', processo: atualizado, num: dados.num, parte: dados.autor };
+  } else {
+    const proc = {
+      id: uid(), numero: dados.num || file.name, tipo: 'juridico', fase: 'Conhecimento',
+      parte: dados.autor, tribunal: dados.tribunal, tramitacao: dados.vara,
+      audiencias: aud, arquivos: [arq], notas: [],
+      createdAt: now(), updatedAt: now(),
+    };
+    return { tipo: 'criar', processo: proc, num: dados.num, parte: dados.autor };
+  }
+}
+
 // ─── MODAL DE IMPORT DJE ─────────────────────────────────────────────────────
 function ModalDJE({ onSalvar, onFechar, claudeKey, processos }) {
-  const [estado, setEstado] = useState('idle'); // idle | extraindo | ia | conflito | revisao | semchave | erro
-  const [statusMsg, setStatusMsg] = useState('');
+  const [estado, setEstado] = useState('idle'); // idle | processando | revisao | concluido
+  const [fila, setFila] = useState([]);       // { file, status, resultado, erro }
+  const [atual, setAtual] = useState(0);
+  // revisão de arquivo único
   const [form, setForm] = useState(null);
-  const [procExistente, setProcExistente] = useState(null);
   const [arqInfo, setArqInfo] = useState(null);
   const inputRef = useRef();
 
-  const processar = async (file) => {
-    setEstado('extraindo');
-    setStatusMsg('Lendo PDF...');
-    try {
-      const arrayBuffer = await file.arrayBuffer();
-      const { texto, escaneado } = await extrairTextoPDF(file);
+  const iniciarProcessamento = async (files) => {
+    const lista = Array.from(files).filter(f => f.name.endsWith('.pdf'));
+    if (!lista.length) return;
 
-      let dados;
-      if (!escaneado) {
-        // PDF com texto — regex local, sem API
-        dados = parsearDJE(texto);
-      } else {
-        // PDF escaneado — precisa de IA
-        if (!claudeKey) {
-          setEstado('semchave');
-          return;
-        }
-        setEstado('ia');
-        setStatusMsg('PDF escaneado detectado — usando IA para ler...');
-        dados = await extrairComIA(file, claudeKey);
-      }
-
-      // Comprime o arquivo
-      const comprimido = await comprimirArquivo(arrayBuffer);
-      const base64 = comprimido
-        ? 'data:application/gzip;base64,' + uint8ToBase64(comprimido)
-        : 'data:application/pdf;base64,' + uint8ToBase64(new Uint8Array(arrayBuffer));
-
-      setArqInfo({
-        nome: file.name,
-        tipo: comprimido ? 'application/gzip' : 'application/pdf',
-        tamanho: file.size,
-        tamanhoComprimido: comprimido ? comprimido.length : file.size,
-        base64,
-        nomeOriginal: file.name,
-      });
-
-      const formBase = {
-        numero: dados.num,
-        tipo: 'juridico',
-        fase: 'Conhecimento',
-        parte: dados.autor,
-        tribunal: dados.tribunal,
-        tramitacao: dados.vara,
-        audData: dados.data,
-        audHora: dados.hora,
-        audTipo: dados.tipoAud,
-        audLocal: dados.local,
-      };
-      setForm(formBase);
-
-      // Verifica se o processo já existe no sistema
-      const existe = dados.num && processos.find(p =>
-        p.numero.replace(/[\s.\-\/]/g,'') === dados.num.replace(/[\s.\-\/]/g,'')
-      );
-      if (existe) {
-        setProcExistente(existe);
-        setEstado('conflito');
-      } else {
+    // Arquivo único → mostra tela de revisão antes de salvar
+    if (lista.length === 1) {
+      setEstado('processando');
+      setFila([{ nome: lista[0].name, status: 'processando' }]);
+      try {
+        const resultado = await processarUmArquivo(lista[0], processos, claudeKey);
+        setFila([{ nome: lista[0].name, status: 'ok', resultado }]);
         setEstado('revisao');
+        // pré-preenche form com os dados extraídos para revisão
+        const p = resultado.processo;
+        const aud = p.audiencias?.[0];
+        setForm({
+          numero: p.numero, tipo: p.tipo, fase: p.fase, parte: p.parte,
+          tribunal: p.tribunal, tramitacao: p.tramitacao,
+          audData: aud?.data||'', audHora: aud?.hora||'',
+          audTipo: aud?.tipo||'Audiência', audLocal: aud?.local||'',
+          _resultado: resultado,
+        });
+      } catch(e) {
+        setFila([{ nome: lista[0].name, status: 'erro', erro: e.message }]);
+        setEstado('concluido');
       }
-    } catch (e) {
-      setEstado('erro');
-      console.error(e);
+      return;
     }
+
+    // Múltiplos arquivos → processa tudo automaticamente
+    setEstado('processando');
+    const filaInicial = lista.map(f => ({ nome: f.name, status: 'aguardando' }));
+    setFila(filaInicial);
+
+    const resultados = [];
+    for (let i = 0; i < lista.length; i++) {
+      setAtual(i);
+      setFila(prev => prev.map((item, idx) => idx === i ? { ...item, status: 'processando' } : item));
+      try {
+        const resultado = await processarUmArquivo(lista[i], processos, claudeKey);
+        onSalvar(resultado); // salva imediatamente
+        resultados.push(resultado);
+        setFila(prev => prev.map((item, idx) => idx === i ? { ...item, status: 'ok', resultado } : item));
+      } catch(e) {
+        setFila(prev => prev.map((item, idx) => idx === i ? { ...item, status: 'erro', erro: e.message } : item));
+      }
+    }
+    setEstado('concluido');
   };
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const mkArquivo = () => arqInfo ? [{
-    id: uid(), nome: arqInfo.nomeOriginal, tipo: arqInfo.tipo,
-    tamanho: arqInfo.tamanho, tamanhoComprimido: arqInfo.tamanhoComprimido,
-    base64: arqInfo.base64, url: null, addedAt: now(),
-  }] : [];
-
-  const mkAudiencia = () => form.audData ? [{
-    id: uid(), data: form.audData, hora: form.audHora,
-    tipo: form.audTipo, local: form.audLocal, obs: '',
-  }] : [];
-
-  const salvarNoExistente = () => {
-    const p = procExistente;
-    const atualizado = {
-      ...p,
-      audiencias: [...(p.audiencias||[]), ...mkAudiencia()],
-      arquivos:   [...(p.arquivos||[]),   ...mkArquivo()],
-      notas:      [...(p.notas||[]), {
-        id: uid(),
-        texto: `Notificação recebida via DJE${form.audData ? ` — Audiência ${form.audTipo} em ${fmtData(form.audData)}${form.audHora?' às '+form.audHora:''}` : ''}`,
-        autor: 'Importado DJE',
-        createdAt: now(),
-      }],
-      updatedAt: now(),
-    };
-    onSalvar({ tipo: 'atualizar', processo: atualizado });
-  };
-
-  const salvar = () => {
+  const confirmarRevisao = () => {
+    const r = form._resultado;
+    const aud = form.audData ? [{ id: uid(), data: form.audData, hora: form.audHora, tipo: form.audTipo, local: form.audLocal, obs: '' }] : [];
     const proc = {
-      id: uid(),
-      numero: form.numero,
-      tipo: form.tipo,
-      fase: form.fase,
-      parte: form.parte,
-      tribunal: form.tribunal,
-      tramitacao: form.tramitacao,
-      audiencias: mkAudiencia(),
-      arquivos: mkArquivo(),
-      notas: [],
-      createdAt: now(),
-      updatedAt: now(),
+      ...r.processo,
+      numero: form.numero, tipo: form.tipo, fase: form.fase, parte: form.parte,
+      tribunal: form.tribunal, tramitacao: form.tramitacao,
+      audiencias: r.tipo === 'atualizar'
+        ? [...(r.processo.audiencias||[]).filter(a => !aud.find(b=>b.data===a.data)), ...aud]
+        : aud,
     };
-    onSalvar({ tipo: 'criar', processo: proc });
+    onSalvar({ tipo: r.tipo, processo: proc });
+    onFechar();
   };
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 }}>
-      <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:16, padding:28, width:600, maxWidth:'95vw', maxHeight:'90vh', overflow:'auto' }}>
+      <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:16, padding:28, width:620, maxWidth:'95vw', maxHeight:'90vh', overflow:'auto' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
           <div style={{ fontWeight:800, fontSize:17 }}>📄 Importar DJE</div>
           <button className="btn-ghost" onClick={onFechar} style={{ fontSize:18 }}>✕</button>
@@ -1330,129 +1345,60 @@ function ModalDJE({ onSalvar, onFechar, claudeKey, processos }) {
               onClick={() => inputRef.current.click()}
               onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor='var(--blue)'; }}
               onDragLeave={e => e.currentTarget.style.borderColor='var(--border)'}
-              onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor='var(--border)'; const f=e.dataTransfer.files[0]; if(f)processar(f); }}
-              style={{ border:'2px dashed var(--border)', borderRadius:12, padding:'40px 24px', textAlign:'center', cursor:'pointer', transition:'border-color .2s' }}>
+              onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor='var(--border)'; iniciarProcessamento(e.dataTransfer.files); }}
+              style={{ border:'2px dashed var(--border)', borderRadius:12, padding:'48px 24px', textAlign:'center', cursor:'pointer', transition:'border-color .2s' }}>
               <div style={{ fontSize:48, marginBottom:12 }}>📄</div>
-              <div style={{ fontWeight:700, fontSize:15, marginBottom:6 }}>Arraste o PDF do DJE aqui</div>
-              <div style={{ color:'var(--muted)', fontSize:13 }}>ou clique para selecionar</div>
+              <div style={{ fontWeight:700, fontSize:15, marginBottom:6 }}>Arraste os PDFs do DJE aqui</div>
+              <div style={{ color:'var(--muted)', fontSize:13 }}>Pode selecionar vários arquivos de uma vez</div>
             </div>
-            <input ref={inputRef} type="file" accept=".pdf" style={{ display:'none' }} onChange={e => { const f=e.target.files[0]; if(f)processar(f); }} />
+            <input ref={inputRef} type="file" accept=".pdf" multiple style={{ display:'none' }}
+              onChange={e => iniciarProcessamento(e.target.files)} />
           </div>
         )}
 
-        {(estado === 'extraindo' || estado === 'ia') && (
-          <div style={{ textAlign:'center', padding:'40px 0', color:'var(--muted)' }}>
-            <div style={{ fontSize:40, marginBottom:12 }}>{estado === 'ia' ? '🤖' : '⏳'}</div>
-            <div style={{ fontWeight:600, color:'var(--text)', marginBottom:6 }}>
-              {estado === 'ia' ? 'Analisando com IA...' : 'Lendo PDF...'}
-            </div>
-            <div style={{ fontSize:13 }}>{statusMsg}</div>
-          </div>
-        )}
-
-        {estado === 'conflito' && procExistente && (
+        {estado === 'processando' && (
           <div>
-            <div style={{ background:'rgba(245,158,11,.08)', border:'1px solid rgba(245,158,11,.3)', borderRadius:10, padding:'14px 16px', marginBottom:20 }}>
-              <div style={{ fontWeight:700, color:'#fcd34d', marginBottom:6 }}>⚠️ Processo já existe no sistema</div>
-              <div style={{ fontFamily:'monospace', fontSize:13, color:'var(--text)', marginBottom:4 }}>{procExistente.numero}</div>
-              <div style={{ fontSize:13, color:'var(--muted)' }}>{procExistente.parte} · {procExistente.tribunal}</div>
+            <div style={{ marginBottom:16, color:'var(--muted)', fontSize:13 }}>
+              Processando {atual + 1} de {fila.length} arquivo(s)...
             </div>
-
-            <div style={{ fontSize:14, fontWeight:600, marginBottom:12 }}>O que deseja fazer com esta notificação?</div>
-
-            <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:20 }}>
-              <div onClick={salvarNoExistente}
-                style={{ background:'var(--surface2)', border:'1px solid rgba(16,185,129,.3)', borderRadius:10, padding:'14px 16px', cursor:'pointer', transition:'border-color .2s' }}
-                onMouseEnter={e=>e.currentTarget.style.borderColor='var(--green)'}
-                onMouseLeave={e=>e.currentTarget.style.borderColor='rgba(16,185,129,.3)'}>
-                <div style={{ fontWeight:700, color:'var(--green)', marginBottom:4 }}>✅ Adicionar ao processo existente</div>
-                <div style={{ fontSize:12, color:'var(--muted)' }}>
-                  Salva o PDF na aba Arquivos, registra uma nota e
-                  {form?.audData && ` agenda a audiência de ${fmtData(form.audData)}`}.
-                </div>
+            <div style={{ background:'var(--bg)', borderRadius:8, height:6, marginBottom:16, overflow:'hidden' }}>
+              <div style={{ height:'100%', background:'var(--blue)', borderRadius:8, width:`${((atual)/fila.length)*100}%`, transition:'width .3s' }} />
+            </div>
+            {fila.map((item, i) => (
+              <div key={i} style={{ display:'flex', gap:10, alignItems:'center', padding:'8px 0', borderBottom:'1px solid var(--border)', fontSize:13 }}>
+                <span style={{ fontSize:16 }}>
+                  {item.status==='ok'?'✅':item.status==='erro'?'❌':item.status==='processando'?'⏳':'⬜'}
+                </span>
+                <span style={{ flex:1, color: item.status==='erro'?'var(--red)':'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.nome}</span>
+                {item.status==='ok' && <span style={{ fontSize:11, color:'var(--muted)' }}>{item.resultado?.tipo==='atualizar'?'adicionado':'novo'}</span>}
               </div>
-
-              <div onClick={() => { setProcExistente(null); setEstado('revisao'); }}
-                style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:10, padding:'14px 16px', cursor:'pointer', transition:'border-color .2s' }}
-                onMouseEnter={e=>e.currentTarget.style.borderColor='var(--blue)'}
-                onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
-                <div style={{ fontWeight:700, marginBottom:4 }}>➕ Criar processo separado</div>
-                <div style={{ fontSize:12, color:'var(--muted)' }}>Cria uma nova entrada independente no sistema.</div>
-              </div>
-            </div>
-
-            <div style={{ display:'flex', justifyContent:'flex-end' }}>
-              <button className="btn-ghost" onClick={() => setEstado('idle')}>← Voltar</button>
-            </div>
-          </div>
-        )}
-
-        {estado === 'semchave' && (
-          <div style={{ textAlign:'center', padding:'32px 0' }}>
-            <div style={{ fontSize:40, marginBottom:12 }}>🔑</div>
-            <div style={{ fontWeight:700, marginBottom:8 }}>PDF escaneado detectado</div>
-            <div style={{ color:'var(--muted)', fontSize:13, marginBottom:16 }}>
-              Este arquivo é uma imagem — não tem texto extraível.<br/>
-              Para ler automaticamente, configure a chave Claude em <strong>Configurações</strong>.
-            </div>
-            <div style={{ display:'flex', gap:8, justifyContent:'center' }}>
-              <button className="btn-secondary" onClick={() => setEstado('idle')}>← Voltar</button>
-              <button className="btn-primary" onClick={() => { setForm({ numero:'', tipo:'juridico', fase:'Conhecimento', parte:'', tribunal:'', tramitacao:'', audData:'', audHora:'', audTipo:'Audiência', audLocal:'' }); setEstado('revisao'); }}>Preencher manualmente</button>
-            </div>
-          </div>
-        )}
-
-        {estado === 'erro' && (
-          <div style={{ textAlign:'center', padding:'32px 0' }}>
-            <div style={{ fontSize:40, marginBottom:12 }}>❌</div>
-            <div style={{ color:'var(--red)', marginBottom:16 }}>Não foi possível ler o PDF.</div>
-            <button className="btn-secondary" onClick={() => setEstado('idle')}>Tentar outro arquivo</button>
+            ))}
           </div>
         )}
 
         {estado === 'revisao' && form && (
           <div>
-            <div style={{ background:'rgba(16,185,129,.08)', border:'1px solid rgba(16,185,129,.3)', borderRadius:8, padding:'10px 14px', marginBottom:16, fontSize:13, color:'#6ee7b7' }}>
-              ✅ Dados extraídos do PDF. Revise e confirme.
-              {arqInfo && <span style={{ marginLeft:8, color:'var(--muted)' }}>
-                {fmtTamanho(arqInfo.tamanho)} → {fmtTamanho(arqInfo.tamanhoComprimido)}
-                {arqInfo.tamanhoComprimido < arqInfo.tamanho && ` (${Math.round((1-arqInfo.tamanhoComprimido/arqInfo.tamanho)*100)}% menor)`}
-              </span>}
+            <div style={{ background: form._resultado?.tipo==='atualizar' ? 'rgba(245,158,11,.08)' : 'rgba(16,185,129,.08)', border:`1px solid ${form._resultado?.tipo==='atualizar'?'rgba(245,158,11,.3)':'rgba(16,185,129,.3)'}`, borderRadius:8, padding:'10px 14px', marginBottom:16, fontSize:13, color: form._resultado?.tipo==='atualizar'?'#fcd34d':'#6ee7b7' }}>
+              {form._resultado?.tipo==='atualizar' ? '⚠️ Processo já existe — será atualizado com este DJE.' : '✅ Novo processo extraído. Revise e confirme.'}
             </div>
-
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
-              <div className="field" style={{ gridColumn:'1/-1' }}>
-                <label>Número do processo</label>
-                <input value={form.numero} onChange={e=>set('numero',e.target.value)} />
-              </div>
-              <div className="field">
-                <label>Tipo</label>
+              <div className="field" style={{ gridColumn:'1/-1' }}><label>Número</label><input value={form.numero} onChange={e=>set('numero',e.target.value)} /></div>
+              <div className="field"><label>Tipo</label>
                 <select value={form.tipo} onChange={e=>set('tipo',e.target.value)}>
                   <option value="juridico">⚖️ Jurídico</option>
                   <option value="administrativo">🏛️ Administrativo</option>
                 </select>
               </div>
-              <div className="field">
-                <label>Fase</label>
+              <div className="field"><label>Fase</label>
                 <select value={form.fase} onChange={e=>set('fase',e.target.value)}>
                   <option>Conhecimento</option><option>Execução</option><option>Arquivado</option>
                 </select>
               </div>
-              <div className="field" style={{ gridColumn:'1/-1' }}>
-                <label>Parte contrária (autor/reclamante)</label>
-                <input value={form.parte} onChange={e=>set('parte',e.target.value)} />
-              </div>
-              <div className="field">
-                <label>Tribunal</label>
-                <input value={form.tribunal} onChange={e=>set('tribunal',e.target.value)} />
-              </div>
-              <div className="field">
-                <label>Vara / Tramitação</label>
-                <input value={form.tramitacao} onChange={e=>set('tramitacao',e.target.value)} />
-              </div>
+              <div className="field" style={{ gridColumn:'1/-1' }}><label>Parte contrária</label><input value={form.parte} onChange={e=>set('parte',e.target.value)} /></div>
+              <div className="field"><label>Tribunal</label><input value={form.tribunal} onChange={e=>set('tribunal',e.target.value)} /></div>
+              <div className="field"><label>Vara / Tramitação</label><input value={form.tramitacao} onChange={e=>set('tramitacao',e.target.value)} /></div>
             </div>
-
-            {(form.audData || form.audHora) && (
+            {form.audData && (
               <div style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:10, padding:14, marginBottom:16 }}>
                 <div style={{ fontWeight:700, fontSize:13, marginBottom:10 }}>📅 Audiência identificada</div>
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
@@ -1460,18 +1406,36 @@ function ModalDJE({ onSalvar, onFechar, claudeKey, processos }) {
                   <div className="field"><label>Hora</label><input type="time" value={form.audHora} onChange={e=>set('audHora',e.target.value)} /></div>
                   <div className="field"><label>Tipo</label><input value={form.audTipo} onChange={e=>set('audTipo',e.target.value)} /></div>
                 </div>
-                <div className="field" style={{ marginTop:8 }}>
-                  <label>Local / Link</label>
-                  <input value={form.audLocal} onChange={e=>set('audLocal',e.target.value)} />
-                </div>
+                <div className="field" style={{ marginTop:8 }}><label>Local / Link</label><input value={form.audLocal} onChange={e=>set('audLocal',e.target.value)} /></div>
               </div>
             )}
-
             <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
-              <button className="btn-secondary" onClick={() => { setEstado('idle'); setForm(null); setArqInfo(null); }}>← Outro arquivo</button>
-              <button className="btn-primary" onClick={salvar} disabled={!form.numero || !form.parte}>
-                ✅ Salvar processo
-              </button>
+              <button className="btn-secondary" onClick={() => { setEstado('idle'); setForm(null); }}>← Cancelar</button>
+              <button className="btn-primary" onClick={confirmarRevisao} disabled={!form.numero||!form.parte}>✅ Confirmar</button>
+            </div>
+          </div>
+        )}
+
+        {estado === 'concluido' && (
+          <div>
+            <div style={{ textAlign:'center', padding:'16px 0 24px' }}>
+              <div style={{ fontSize:40, marginBottom:8 }}>✅</div>
+              <div style={{ fontWeight:700, fontSize:16 }}>
+                {fila.filter(f=>f.status==='ok').length} de {fila.length} arquivo(s) importado(s)
+              </div>
+            </div>
+            {fila.map((item, i) => (
+              <div key={i} style={{ display:'flex', gap:10, alignItems:'center', padding:'8px 0', borderBottom:'1px solid var(--border)', fontSize:13 }}>
+                <span style={{ fontSize:16 }}>{item.status==='ok'?'✅':'❌'}</span>
+                <span style={{ flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.nome}</span>
+                <span style={{ fontSize:11, color: item.status==='ok'?'var(--green)':'var(--red)' }}>
+                  {item.status==='ok' ? (item.resultado?.tipo==='atualizar'?'adicionado ao processo existente':'novo processo criado') : item.erro || 'erro'}
+                </span>
+              </div>
+            ))}
+            <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:20 }}>
+              <button className="btn-secondary" onClick={() => { setEstado('idle'); setFila([]); setAtual(0); }}>Importar mais</button>
+              <button className="btn-primary" onClick={onFechar}>Fechar</button>
             </div>
           </div>
         )}
