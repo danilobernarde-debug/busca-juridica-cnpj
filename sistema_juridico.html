@@ -1331,42 +1331,31 @@ function ModalDJE({ onSalvar, onFechar, claudeKey, processos }) {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const confirmarAtual = () => {
+  const avancarDecisao = (acao) => {
     const idx = indiceRef.current;
-    decisoesRef.current[idx] = { acao: 'salvar', form };
+    decisoesRef.current[idx] = { acao, form };
     const proximo = idx + 1;
     if (proximo < extraidosRef.current.length) {
       indiceRef.current = proximo;
       abrirItem(proximo);
     } else {
-      // Último item confirmado — salva tudo e encerra
-      finalizarTudo();
+      setEstado('resumo'); // todos revisados → mostra lista de confirmação
     }
   };
 
-  const pularAtual = () => {
-    const idx = indiceRef.current;
-    decisoesRef.current[idx] = { acao: 'pular', form };
-    const proximo = idx + 1;
-    if (proximo < extraidosRef.current.length) {
-      indiceRef.current = proximo;
-      abrirItem(proximo);
-    } else {
-      finalizarTudo();
-    }
-  };
+  const confirmarAtual = () => avancarDecisao('salvar');
+  const pularAtual     = () => avancarDecisao('pular');
 
   const voltarAnterior = () => {
-    if (indiceRef.current === 0) return;
-    // Salva o estado do form atual antes de voltar
+    const origem = estado === 'resumo' ? extraidosRef.current.length - 1 : indiceRef.current - 1;
     decisoesRef.current[indiceRef.current] = { acao: decisoesRef.current[indiceRef.current]?.acao || 'pendente', form };
-    indiceRef.current--;
-    abrirItem(indiceRef.current);
+    indiceRef.current = origem;
+    abrirItem(origem);
   };
 
   const finalizarTudo = () => {
     const decisoes = decisoesRef.current;
-    decisoes.forEach((d, i) => {
+    decisoes.forEach(d => {
       if (d?.acao === 'salvar') onSalvar({ tipo: d.form._resultado.tipo, processo: formParaProcesso(d.form) });
     });
     setFila(prev => prev.map((item, i) => {
@@ -1468,39 +1457,46 @@ function ModalDJE({ onSalvar, onFechar, claudeKey, processos }) {
                 </div>
               )}
 
-              {/* Resumo das anteriores (só no último item com múltiplos) */}
-              {isUltimo && isMulti && (
-                <div style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:10, padding:'10px 14px', marginBottom:16 }}>
-                  <div style={{ fontWeight:700, fontSize:12, color:'var(--muted)', marginBottom:8, textTransform:'uppercase', letterSpacing:'.04em' }}>Decisões anteriores</div>
-                  {extraidosRef.current.slice(0, idx).map((item, i) => {
-                    const d = decisoes[i];
-                    const acao = d?.acao || 'pendente';
-                    return (
-                      <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'4px 0', fontSize:12 }}>
-                        <span>{acao==='salvar'?'✅':acao==='pular'?'⏭️':'⬜'}</span>
-                        <span style={{ flex:1, color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                          {d?.form?.numero || item.nome}
-                        </span>
-                        <span style={{ color: acao==='salvar'?'var(--green)':'var(--muted)' }}>
-                          {acao==='salvar' ? (d.form._resultado?.tipo==='atualizar'?'adicionar':'criar') : 'pular'}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
               {/* Botões */}
-              <div style={{ display:'flex', gap:8, justifyContent:'flex-end', alignItems:'center' }}>
+              <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
                 {idx > 0 && <button className="btn-secondary" onClick={voltarAnterior}>← Voltar</button>}
-                {!isUltimo && <button className="btn-secondary" onClick={pularAtual}>Pular →</button>}
-                <button className="btn-primary" onClick={confirmarAtual} disabled={!form.numero||!form.parte}>
-                  {isUltimo && isMulti ? '✅ Confirmar e finalizar' : '✅ Confirmar'}
-                </button>
+                <button className="btn-secondary" onClick={pularAtual}>Pular →</button>
+                <button className="btn-primary" onClick={confirmarAtual} disabled={!form.numero||!form.parte}>✅ Confirmar</button>
               </div>
             </div>
           );
         })()}
+
+        {estado === 'resumo' && (
+          <div>
+            <div style={{ fontWeight:700, fontSize:15, marginBottom:16 }}>Confirmar importação</div>
+            {extraidosRef.current.map((item, i) => {
+              const d = decisoesRef.current[i];
+              const acao = d?.acao || 'pendente';
+              const numero = d?.form?.numero || item.nome;
+              const parte  = d?.form?.parte || '—';
+              const existente = d?.form?._resultado?.tipo === 'atualizar';
+              return (
+                <div key={i} style={{ display:'flex', gap:12, alignItems:'center', padding:'10px 0', borderBottom:'1px solid var(--border)' }}>
+                  <span style={{ fontSize:18 }}>{acao==='salvar'?'✅':acao==='pular'?'⏭️':'⬜'}</span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontFamily:'monospace', fontSize:12, color:'#93c5fd', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{numero}</div>
+                    <div style={{ fontSize:12, color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{parte}</div>
+                  </div>
+                  <span style={{ fontSize:11, color: acao==='salvar'?'var(--green)':'var(--muted)', whiteSpace:'nowrap' }}>
+                    {acao==='salvar' ? (existente?'adicionar ao existente':'novo processo') : 'pular'}
+                  </span>
+                </div>
+              );
+            })}
+            <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:20 }}>
+              <button className="btn-secondary" onClick={voltarAnterior}>← Voltar</button>
+              <button className="btn-primary" onClick={finalizarTudo}>
+                ✅ Confirmar e salvar {decisoesRef.current.filter(d=>d?.acao==='salvar').length} processo(s)
+              </button>
+            </div>
+          </div>
+        )}
 
         {estado === 'concluido' && (
           <div>
