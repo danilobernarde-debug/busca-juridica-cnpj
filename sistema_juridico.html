@@ -1311,6 +1311,9 @@ function ModalDJE({ onSalvar, onFechar, claudeKey, processos }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const avancar = (salvar) => {
+    const idx = indiceRef.current;
+    const nomeAtual = extraidosRef.current[idx]?.nome;
+
     if (salvar) {
       const r = form._resultado;
       const aud = form.audData ? [{ id: uid(), data: form.audData, hora: form.audHora, tipo: form.audTipo, local: form.audLocal, obs: '' }] : [];
@@ -1323,9 +1326,16 @@ function ModalDJE({ onSalvar, onFechar, claudeKey, processos }) {
           : aud,
       };
       onSalvar({ tipo: r.tipo, processo: proc });
+      setFila(prev => prev.map(item =>
+        item.nome === nomeAtual ? { ...item, status: 'ok', resultado: form._resultado } : item
+      ));
+    } else {
+      setFila(prev => prev.map(item =>
+        item.nome === nomeAtual ? { ...item, status: 'pulado' } : item
+      ));
     }
 
-    const proximo = indiceRef.current + 1;
+    const proximo = idx + 1;
     indiceRef.current = proximo;
 
     if (proximo < extraidosRef.current.length) {
@@ -1434,18 +1444,23 @@ function ModalDJE({ onSalvar, onFechar, claudeKey, processos }) {
             <div style={{ textAlign:'center', padding:'16px 0 24px' }}>
               <div style={{ fontSize:40, marginBottom:8 }}>✅</div>
               <div style={{ fontWeight:700, fontSize:16 }}>
-                {fila.filter(f=>f.status==='ok').length} de {fila.length} arquivo(s) importado(s)
+                {fila.filter(f=>f.status==='ok').length} salvo(s) · {fila.filter(f=>f.status==='pulado').length} pulado(s) · {fila.filter(f=>f.status==='erro').length} erro(s)
               </div>
             </div>
-            {fila.map((item, i) => (
-              <div key={i} style={{ display:'flex', gap:10, alignItems:'center', padding:'8px 0', borderBottom:'1px solid var(--border)', fontSize:13 }}>
-                <span style={{ fontSize:16 }}>{item.status==='ok'?'✅':'❌'}</span>
-                <span style={{ flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.nome}</span>
-                <span style={{ fontSize:11, color: item.status==='ok'?'var(--green)':'var(--red)' }}>
-                  {item.status==='ok' ? (item.resultado?.tipo==='atualizar'?'adicionado ao processo existente':'novo processo criado') : item.erro || 'erro'}
-                </span>
-              </div>
-            ))}
+            {fila.map((item, i) => {
+              const icon  = item.status==='ok' ? '✅' : item.status==='pulado' ? '⏭️' : '❌';
+              const color = item.status==='ok' ? 'var(--green)' : item.status==='pulado' ? 'var(--muted)' : 'var(--red)';
+              const label = item.status==='ok'
+                ? (item.resultado?.tipo==='atualizar' ? 'adicionado ao processo existente' : 'novo processo criado')
+                : item.status==='pulado' ? 'pulado' : item.erro || 'erro ao ler arquivo';
+              return (
+                <div key={i} style={{ display:'flex', gap:10, alignItems:'center', padding:'8px 0', borderBottom:'1px solid var(--border)', fontSize:13 }}>
+                  <span style={{ fontSize:16 }}>{icon}</span>
+                  <span style={{ flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.nome}</span>
+                  <span style={{ fontSize:11, color }}>{label}</span>
+                </div>
+              );
+            })}
             <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:20 }}>
               <button className="btn-secondary" onClick={() => { setEstado('idle'); setFila([]); setAtual(0); }}>Importar mais</button>
               <button className="btn-primary" onClick={onFechar}>Fechar</button>
