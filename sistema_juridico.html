@@ -81,14 +81,19 @@ async function sb_carregar() {
 }
 
 async function sb_salvar(proc) {
-  const { data: pd, error: pe } = await sbClient.from('jud_processos').upsert({
+  // Verifica sessão ativa
+  const { data: { session } } = await sbClient.auth.getSession();
+  if (!session) throw new Error('Sessão expirada — faça login novamente');
+
+  const { data, error: pe } = await sbClient.from('jud_processos').upsert({
     id: proc.id,
     numero: proc.numero, tipo: proc.tipo, fase: proc.fase,
     parte: proc.parte || '', tribunal: proc.tribunal || '', tramitacao: proc.tramitacao || '',
     updated_at: new Date().toISOString(),
-  }, { onConflict: 'id' }).select().single();
+  }, { onConflict: 'id' }).select();
   if (pe) throw pe;
-  const pid = pd.id;
+  if (!data?.length) throw new Error('Nenhum dado retornado pelo Supabase após salvar');
+  const pid = data[0].id;
 
   await sbClient.from('jud_audiencias').delete().eq('processo_id', pid);
   if (proc.audiencias?.length) {
@@ -1250,20 +1255,28 @@ function App() {
     await sbClient.auth.signOut();
   };
 
+  const salvarSB = async (proc) => {
+    if (!sbClient) return null;
+    try {
+      return await sb_salvar(proc);
+    } catch(e) {
+      const msg = e?.message || e?.details || JSON.stringify(e);
+      console.error('Supabase save error:', e);
+      setErroSB('Erro ao salvar: ' + msg);
+      return null;
+    }
+  };
+
   const updateProcesso = useCallback(async (proc) => {
     setProcessos(prev => prev.map(p => p.id === proc.id ? proc : p));
     if (processoAberto?.id === proc.id) setProcessoAberto(proc);
-    if (sbClient) { try { await sb_salvar(proc); } catch(e) { console.error(e); } }
+    if (sbClient) await salvarSB(proc);
     else saveData({ processos: processos.map(p => p.id === proc.id ? proc : p), config });
   }, [processos, processoAberto, config]);
 
   const addProcesso = useCallback(async (proc) => {
-    let saved = proc;
-    if (sbClient) {
-      try { saved = await sb_salvar(proc); } catch(e) { console.error(e); }
-    } else {
-      saveData({ processos: [proc, ...processos], config });
-    }
+    const saved = sbClient ? (await salvarSB(proc) || proc) : proc;
+    if (!sbClient) saveData({ processos: [proc, ...processos], config });
     setProcessos(prev => [saved, ...prev.filter(p => p.id !== saved.id)]);
     setAdicionando(null);
     setProcessoAberto(saved);
@@ -1271,7 +1284,7 @@ function App() {
   }, [processos, config]);
 
   const delProcesso = useCallback(async (id) => {
-    if (sbClient) { try { await sb_deletar(id); } catch(e) { console.error(e); } }
+    if (sbClient) { try { await sb_deletar(id); } catch(e) { setErroSB('Erro ao deletar: ' + e.message); } }
     else saveData({ processos: processos.filter(p => p.id !== id), config });
     setProcessos(prev => prev.filter(p => p.id !== id));
     setProcessoAberto(null);
