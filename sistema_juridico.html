@@ -1264,7 +1264,8 @@ function ModalDJE({ onSalvar, onFechar, claudeKey, processos }) {
   const [arqInfo, setArqInfo] = useState(null);
   const inputRef = useRef();
 
-  const [pendentes, setPendentes] = useState([]); // fila de resultados aguardando revisão
+  const extraidosRef = useRef([]);  // array fixo, evita stale closure
+  const indiceRef = useRef(0);
 
   const iniciarProcessamento = async (files) => {
     const lista = Array.from(files).filter(f => f.name.endsWith('.pdf'));
@@ -1289,7 +1290,8 @@ function ModalDJE({ onSalvar, onFechar, claudeKey, processos }) {
     if (!extraidos.length) { setEstado('concluido'); return; }
 
     // Abre revisão do primeiro
-    setPendentes(extraidos);
+    extraidosRef.current = extraidos;
+    indiceRef.current = 0;
     abrirRevisao(extraidos[0].resultado);
   };
 
@@ -1308,39 +1310,33 @@ function ModalDJE({ onSalvar, onFechar, claudeKey, processos }) {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const confirmarRevisao = () => {
-    const r = form._resultado;
-    const aud = form.audData ? [{ id: uid(), data: form.audData, hora: form.audHora, tipo: form.audTipo, local: form.audLocal, obs: '' }] : [];
-    const proc = {
-      ...r.processo,
-      numero: form.numero, tipo: form.tipo, fase: form.fase, parte: form.parte,
-      tribunal: form.tribunal, tramitacao: form.tramitacao,
-      audiencias: r.tipo === 'atualizar'
-        ? [...(r.processo.audiencias||[]).filter(a => !aud.find(b=>b.data===a.data)), ...aud]
-        : aud,
-    };
-    onSalvar({ tipo: r.tipo, processo: proc });
+  const avancar = (salvar) => {
+    if (salvar) {
+      const r = form._resultado;
+      const aud = form.audData ? [{ id: uid(), data: form.audData, hora: form.audHora, tipo: form.audTipo, local: form.audLocal, obs: '' }] : [];
+      const proc = {
+        ...r.processo,
+        numero: form.numero, tipo: form.tipo, fase: form.fase, parte: form.parte,
+        tribunal: form.tribunal, tramitacao: form.tramitacao,
+        audiencias: r.tipo === 'atualizar'
+          ? [...(r.processo.audiencias||[]).filter(a => !aud.find(b=>b.data===a.data)), ...aud]
+          : aud,
+      };
+      onSalvar({ tipo: r.tipo, processo: proc });
+    }
 
-    // Avança para a próxima notificação pendente
-    const resto = pendentes.slice(1);
-    setPendentes(resto);
-    setFila(prev => prev.map(item => item.status === 'lido' ? { ...item, status: item === pendentes[0] ? 'ok' : item.status } : item));
-    if (resto.length > 0) {
-      abrirRevisao(resto[0].resultado);
+    const proximo = indiceRef.current + 1;
+    indiceRef.current = proximo;
+
+    if (proximo < extraidosRef.current.length) {
+      abrirRevisao(extraidosRef.current[proximo].resultado);
     } else {
       setEstado('concluido');
     }
   };
 
-  const pularRevisao = () => {
-    const resto = pendentes.slice(1);
-    setPendentes(resto);
-    if (resto.length > 0) {
-      abrirRevisao(resto[0].resultado);
-    } else {
-      setEstado('concluido');
-    }
-  };
+  const confirmarRevisao = () => avancar(true);
+  const pularRevisao    = () => avancar(false);
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 }}>
@@ -1422,11 +1418,11 @@ function ModalDJE({ onSalvar, onFechar, claudeKey, processos }) {
             )}
             <div style={{ display:'flex', gap:10, justifyContent:'space-between', alignItems:'center' }}>
               <div style={{ fontSize:12, color:'var(--muted)' }}>
-                {pendentes.length > 1 && `Notificação 1 de ${pendentes.length}`}
+                {extraidosRef.current.length > 1 && `Notificação ${indiceRef.current + 1} de ${extraidosRef.current.length}`}
               </div>
               <div style={{ display:'flex', gap:8 }}>
-                <button className="btn-secondary" onClick={() => { setEstado('idle'); setForm(null); setPendentes([]); }}>← Cancelar</button>
-                {pendentes.length > 1 && <button className="btn-secondary" onClick={pularRevisao}>Pular →</button>}
+                <button className="btn-secondary" onClick={() => { setEstado('idle'); setForm(null); }}>← Cancelar</button>
+                {extraidosRef.current.length > 1 && <button className="btn-secondary" onClick={pularRevisao}>Pular →</button>}
                 <button className="btn-primary" onClick={confirmarRevisao} disabled={!form.numero||!form.parte}>✅ Confirmar</button>
               </div>
             </div>
