@@ -1004,6 +1004,7 @@ function App() {
       </div>
       {showDJE && (
         <ModalDJE
+          claudeKey={config.claudeKey}
           onFechar={() => setShowDJE(false)}
           onSalvar={(proc) => {
             addProcesso(proc);
@@ -1030,7 +1031,82 @@ async function extrairTextoPDF(file) {
     const content = await page.getTextContent();
     texto += content.items.map(item => item.str).join(' ') + ' ';
   }
-  return texto;
+  return { texto, numPages: pdf.numPages, escaneado: texto.replace(/\s/g,'').length < 120 };
+}
+
+// Renderiza páginas do PDF como imagens base64 (para PDFs escaneados)
+async function pdfParaImagens(file, maxPaginas = 3) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const paginas = Math.min(pdf.numPages, maxPaginas);
+  const imagens = [];
+  for (let i = 1; i <= paginas; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 1.8 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    imagens.push(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
+  }
+  return imagens;
+}
+
+// Usa Claude Vision para extrair dados de PDF escaneado
+async function extrairComIA(file, claudeKey) {
+  const imagens = await pdfParaImagens(file);
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': claudeKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-opus-4-8',
+      max_tokens: 512,
+      messages: [{
+        role: 'user',
+        content: [
+          ...imagens.map(img => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: img } })),
+          { type: 'text', text: `Este é um documento do DJE (Diário da Justiça Eletrônico) brasileiro. Extraia as seguintes informações em JSON:
+{
+  "numero": "número do processo no formato NNNNNNN-DD.AAAA.J.TT.OOOO",
+  "tribunal": "sigla do tribunal (ex: TRT18, TJGO)",
+  "vara": "vara ou unidade judiciária",
+  "autor": "nome do autor/reclamante (parte contrária)",
+  "dataAudiencia": "DD/MM/AAAA ou vazio",
+  "horaAudiencia": "HH:MM ou vazio",
+  "tipoAudiencia": "tipo da audiência",
+  "local": "link de videoconferência ou Presencial"
+}
+Responda APENAS o JSON, sem explicações.` }
+        ]
+      }]
+    })
+  });
+  if (!res.ok) throw new Error('Erro na API Claude');
+  const data = await res.json();
+  const json = JSON.parse(data.content[0].text.match(/\{[\s\S]*\}/)[0]);
+
+  // Converte para o formato interno
+  let data_ = '', hora = '';
+  if (json.dataAudiencia) {
+    const [d, m, y] = json.dataAudiencia.split('/');
+    data_ = `${y}-${m}-${d}`;
+    hora = json.horaAudiencia || '';
+  }
+  return {
+    num: json.numero || '',
+    tribunal: json.tribunal || '',
+    vara: json.vara || '',
+    autor: json.autor || '',
+    data: data_,
+    hora,
+    tipoAud: json.tipoAudiencia || 'Audiência',
+    local: json.local || '',
+  };
 }
 
 // ─── PARSER DE DJE ───────────────────────────────────────────────────────────
@@ -1108,19 +1184,34 @@ function uint8ToBase64(u8) {
 }
 
 // ─── MODAL DE IMPORT DJE ─────────────────────────────────────────────────────
-function ModalDJE({ onSalvar, onFechar }) {
-  const [estado, setEstado] = useState('idle'); // idle | extraindo | revisao | erro
-  const [extraido, setExtraido] = useState(null);
+function ModalDJE({ onSalvar, onFechar, claudeKey }) {
+  const [estado, setEstado] = useState('idle'); // idle | extraindo | ia | revisao | erro
+  const [statusMsg, setStatusMsg] = useState('');
   const [form, setForm] = useState(null);
   const [arqInfo, setArqInfo] = useState(null);
   const inputRef = useRef();
 
   const processar = async (file) => {
     setEstado('extraindo');
+    setStatusMsg('Lendo PDF...');
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const texto = await extrairTextoPDF(file);
-      const dados = parsearDJE(texto);
+      const { texto, escaneado } = await extrairTextoPDF(file);
+
+      let dados;
+      if (!escaneado) {
+        // PDF com texto — regex local, sem API
+        dados = parsearDJE(texto);
+      } else {
+        // PDF escaneado — precisa de IA
+        if (!claudeKey) {
+          setEstado('semchave');
+          return;
+        }
+        setEstado('ia');
+        setStatusMsg('PDF escaneado detectado — usando IA para ler...');
+        dados = await extrairComIA(file, claudeKey);
+      }
 
       // Comprime o arquivo
       const comprimido = await comprimirArquivo(arrayBuffer);
@@ -1213,10 +1304,28 @@ function ModalDJE({ onSalvar, onFechar }) {
           </div>
         )}
 
-        {estado === 'extraindo' && (
+        {(estado === 'extraindo' || estado === 'ia') && (
           <div style={{ textAlign:'center', padding:'40px 0', color:'var(--muted)' }}>
-            <div style={{ fontSize:40, marginBottom:12 }}>⏳</div>
-            <div>Extraindo informações do PDF...</div>
+            <div style={{ fontSize:40, marginBottom:12 }}>{estado === 'ia' ? '🤖' : '⏳'}</div>
+            <div style={{ fontWeight:600, color:'var(--text)', marginBottom:6 }}>
+              {estado === 'ia' ? 'Analisando com IA...' : 'Lendo PDF...'}
+            </div>
+            <div style={{ fontSize:13 }}>{statusMsg}</div>
+          </div>
+        )}
+
+        {estado === 'semchave' && (
+          <div style={{ textAlign:'center', padding:'32px 0' }}>
+            <div style={{ fontSize:40, marginBottom:12 }}>🔑</div>
+            <div style={{ fontWeight:700, marginBottom:8 }}>PDF escaneado detectado</div>
+            <div style={{ color:'var(--muted)', fontSize:13, marginBottom:16 }}>
+              Este arquivo é uma imagem — não tem texto extraível.<br/>
+              Para ler automaticamente, configure a chave Claude em <strong>Configurações</strong>.
+            </div>
+            <div style={{ display:'flex', gap:8, justifyContent:'center' }}>
+              <button className="btn-secondary" onClick={() => setEstado('idle')}>← Voltar</button>
+              <button className="btn-primary" onClick={() => { setForm({ numero:'', tipo:'juridico', fase:'Conhecimento', parte:'', tribunal:'', tramitacao:'', audData:'', audHora:'', audTipo:'Audiência', audLocal:'' }); setEstado('revisao'); }}>Preencher manualmente</button>
+            </div>
           </div>
         )}
 
