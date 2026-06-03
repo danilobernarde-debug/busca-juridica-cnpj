@@ -7,6 +7,7 @@
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
   <style>
     :root {
       --bg: #0f172a; --surface: #1e293b; --surface2: #253248; --surface3: #2d3f5a;
@@ -15,7 +16,8 @@
       --red: #ef4444; --purple: #8b5cf6; --orange: #f97316;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; overflow: hidden; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
+    #root { display: flex; width: 100%; height: 100vh; overflow: hidden; }
     ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -275,13 +277,20 @@ function Dashboard({ processos, setView, setProcessoAberto }) {
 }
 
 // ─── LISTA DE PROCESSOS ───────────────────────────────────────────────────────
-function ProcessoList({ processos, tipo, setProcessoAberto, setView, onAdd }) {
+function ProcessoList({ processos, tipo, setProcessoAberto, setView, onAdd, onImportDJE }) {
   const [busca, setBusca] = useState('');
   const [filtroFase, setFiltroFase] = useState('Todos');
   const [filtroTribunal, setFiltroTribunal] = useState('Todos');
+  const [filtroRamo, setFiltroRamo] = useState('Todos'); // só para tipo juridico
+
+  const isTRT = (trib) => (trib||'').toUpperCase().startsWith('TRT');
 
   const lista = processos.filter(p => {
     if (p.tipo !== tipo) return false;
+    if (tipo === 'juridico') {
+      if (filtroRamo === 'Cível' && isTRT(p.tribunal)) return false;
+      if (filtroRamo === 'Trabalhista' && !isTRT(p.tribunal)) return false;
+    }
     if (filtroFase !== 'Todos' && p.fase !== filtroFase) return false;
     if (filtroTribunal !== 'Todos' && p.tribunal !== filtroTribunal) return false;
     if (busca) {
@@ -291,7 +300,16 @@ function ProcessoList({ processos, tipo, setProcessoAberto, setView, onAdd }) {
     return true;
   });
 
-  const tribunais = ['Todos', ...new Set(processos.filter(p => p.tipo === tipo).map(p => p.tribunal))];
+  const tribunais = ['Todos', ...new Set(
+    processos.filter(p => {
+      if (p.tipo !== tipo) return false;
+      if (tipo === 'juridico') {
+        if (filtroRamo === 'Cível' && isTRT(p.tribunal)) return false;
+        if (filtroRamo === 'Trabalhista' && !isTRT(p.tribunal)) return false;
+      }
+      return true;
+    }).map(p => p.tribunal)
+  )];
 
   const st = TIPO_STYLE[tipo];
 
@@ -302,10 +320,26 @@ function ProcessoList({ processos, tipo, setProcessoAberto, setView, onAdd }) {
           <div style={{ fontSize:20, fontWeight:800 }}>{st.icon} {st.label}</div>
           <div style={{ fontSize:13, color:'var(--muted)', marginTop:2 }}>{lista.length} processo(s)</div>
         </div>
-        <button className="btn-primary" onClick={onAdd} style={{ display:'flex', alignItems:'center', gap:6 }}>
-          + Novo processo
-        </button>
+        <div style={{ display:'flex', gap:8 }}>
+          <button className="btn-secondary" onClick={onImportDJE} style={{ display:'flex', alignItems:'center', gap:6 }}>
+            📄 Importar DJE
+          </button>
+          <button className="btn-primary" onClick={onAdd} style={{ display:'flex', alignItems:'center', gap:6 }}>
+            + Novo processo
+          </button>
+        </div>
       </div>
+
+      {tipo === 'juridico' && (
+        <div style={{ display:'flex', gap:4, marginBottom:14 }}>
+          {['Todos','Cível','Trabalhista'].map(r => (
+            <button key={r} onClick={()=>{ setFiltroRamo(r); setFiltroTribunal('Todos'); }}
+              style={{ padding:'7px 18px', borderRadius:8, border: filtroRamo===r ? '1px solid var(--blue)' : '1px solid var(--border)', background: filtroRamo===r ? 'rgba(59,130,246,.15)' : 'var(--surface)', color: filtroRamo===r ? '#93c5fd' : 'var(--muted)', fontSize:13, fontWeight: filtroRamo===r ? 700 : 400, cursor:'pointer' }}>
+              {r === 'Cível' ? '🏛 Cível' : r === 'Trabalhista' ? '👷 Trabalhista' : '📋 Todos'}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap' }}>
         <input value={busca} onChange={e=>setBusca(e.target.value)} placeholder="Buscar por número ou parte..." style={{ width:280 }} />
@@ -904,7 +938,8 @@ function App() {
   const [data, setData] = useState(() => loadData());
   const [view, setView] = useState('dashboard');
   const [processoAberto, setProcessoAberto] = useState(null);
-  const [adicionando, setAdicionando] = useState(null); // 'juridico' | 'administrativo'
+  const [adicionando, setAdicionando] = useState(null);
+  const [showDJE, setShowDJE] = useState(false);
 
   const { processos, config } = data;
 
@@ -919,7 +954,8 @@ function App() {
   }, [data, processos, processoAberto, salvar]);
 
   const addProcesso = useCallback((proc) => {
-    salvar({ ...data, processos: [proc, ...processos] });
+    const novoData = { ...data, processos: [proc, ...processos] };
+    salvar(novoData);
     setAdicionando(null);
     setProcessoAberto(proc);
     setView('detalhe');
@@ -949,9 +985,9 @@ function App() {
   } else if (view === 'dashboard') {
     mainContent = <Dashboard processos={processos} setView={setView} setProcessoAberto={setProcessoAberto} />;
   } else if (view === 'juridico') {
-    mainContent = <ProcessoList processos={processos} tipo="juridico" setProcessoAberto={setProcessoAberto} setView={setView} onAdd={()=>setAdicionando('juridico')} />;
+    mainContent = <ProcessoList processos={processos} tipo="juridico" setProcessoAberto={setProcessoAberto} setView={setView} onAdd={()=>setAdicionando('juridico')} onImportDJE={()=>setShowDJE(true)} />;
   } else if (view === 'adm') {
-    mainContent = <ProcessoList processos={processos} tipo="administrativo" setProcessoAberto={setProcessoAberto} setView={setView} onAdd={()=>setAdicionando('administrativo')} />;
+    mainContent = <ProcessoList processos={processos} tipo="administrativo" setProcessoAberto={setProcessoAberto} setView={setView} onAdd={()=>setAdicionando('administrativo')} onImportDJE={()=>setShowDJE(true)} />;
   } else if (view === 'agenda') {
     mainContent = <Agenda processos={processos} setProcessoAberto={setProcessoAberto} setView={setView} />;
   } else if (view === 'ia') {
@@ -966,7 +1002,299 @@ function App() {
       <div style={{ flex:1, display:'flex', flexDirection:'column', minWidth:0 }}>
         {mainContent}
       </div>
+      {showDJE && (
+        <ModalDJE
+          onFechar={() => setShowDJE(false)}
+          onSalvar={(proc) => {
+            addProcesso(proc);
+            setShowDJE(false);
+          }}
+        />
+      )}
     </React.Fragment>
+  );
+}
+
+// ─── PDF.JS WORKER ───────────────────────────────────────────────────────────
+if (typeof pdfjsLib !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+}
+
+// ─── EXTRAÇÃO DE TEXTO DO PDF ─────────────────────────────────────────────────
+async function extrairTextoPDF(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let texto = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    texto += content.items.map(item => item.str).join(' ') + ' ';
+  }
+  return texto;
+}
+
+// ─── PARSER DE DJE ───────────────────────────────────────────────────────────
+function parsearDJE(texto) {
+  const t = texto.replace(/\s+/g, ' ');
+
+  // Número do processo (formato CNJ)
+  const num = (t.match(/(\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4})/) || [])[1] || '';
+
+  // Tribunal TRT
+  const trtM = t.match(/TRABALHO DA\s+(\d+)[ªa°]?\s*REGI/i);
+  const tribunal = trtM ? `TRT${String(parseInt(trtM[1])).padStart(2,'0')}` : '';
+
+  // Vara do trabalho
+  const varaM = t.match(/((?:\d+[ªa°]?\s+)?(?:VARA|POSTO)\s+(?:AVANÇADO\s+DE\s+\w+|DO\s+TRABALHO[^,\.]{2,40}?))\s*(?:-\s*[A-Z]{2})?/i);
+  const vara = varaM ? varaM[0].replace(/\s+/g, ' ').trim().slice(0, 60) : '';
+
+  // Autor/Reclamante — a parte contrária (quem processa a DB Machado)
+  const autorM = t.match(/(?:AUTOR|RECLAMANTE):\s*([A-ZÁÊÇÕÃÂÍÓÚ][^\|]{3,60}?)(?=\s+R[EÉ]U|\s+RECLAMADO|\s+DEST)/i)
+               || t.match(/(?:AUTOR|RECLAMANTE):\s*([A-ZÁÊÇÕÃÂÍÓÚ][^\n\r]{3,60})/i);
+  const autor = autorM ? autorM[1].replace(/\s+/g, ' ').trim().split(/\s{2,}/)[0] : '';
+
+  // Data — múltiplos formatos
+  const dataM = t.match(/(\d{2}\/\d{2}\/\d{4})[,\s]+(?:às\s+|às)?(\d{2})(?:h|:)(\d{2})/i)
+             || t.match(/dia\s+(\d{2}\/\d{2}\/\d{4})[,\s]+(\d{2}):(\d{2})/i);
+  let data = '', hora = '';
+  if (dataM) {
+    const [d, m, y] = dataM[1].split('/');
+    data = `${y}-${m}-${d}`;
+    hora = `${dataM[2]}:${dataM[3]}`;
+  }
+
+  // Link da audiência
+  const linkM = t.match(/(https?:\/\/[^\s"'<>]+(?:zoom|meet|teams)[^\s"'<>]*)/i);
+  const link = linkM ? linkM[1] : '';
+
+  // Tipo e local da audiência
+  const tipoAud = /AUDI[EÊ]NCIA INICIAL/i.test(t) ? 'Audiência Inicial' :
+                  /CONCILIA[CÇ]/i.test(t) ? 'Conciliação' :
+                  /INSTRU[CÇ][AÃ]O/i.test(t) ? 'Instrução' : 'Audiência';
+  const local = /VIRTUAL|ZOOM|videoconfer|telepresencial|100% DIGITAL/i.test(t)
+    ? (link || 'Videoconferência')
+    : /PRESENCIAL/i.test(t) ? 'Presencial' : link || '';
+
+  return { num, tribunal, vara: vara || '', autor, data, hora, tipoAud, local, link };
+}
+
+// ─── COMPRESSÃO DO ARQUIVO ────────────────────────────────────────────────────
+async function comprimirArquivo(arrayBuffer) {
+  try {
+    if (!window.CompressionStream) return null;
+    const cs = new CompressionStream('gzip');
+    const writer = cs.writable.getWriter();
+    writer.write(new Uint8Array(arrayBuffer));
+    writer.close();
+    const chunks = [];
+    const reader = cs.readable.getReader();
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    const total = chunks.reduce((a, b) => a + b.length, 0);
+    const result = new Uint8Array(total);
+    let offset = 0;
+    chunks.forEach(c => { result.set(c, offset); offset += c.length; });
+    return result;
+  } catch { return null; }
+}
+
+function uint8ToBase64(u8) {
+  let bin = '';
+  u8.forEach(b => bin += String.fromCharCode(b));
+  return btoa(bin);
+}
+
+// ─── MODAL DE IMPORT DJE ─────────────────────────────────────────────────────
+function ModalDJE({ onSalvar, onFechar }) {
+  const [estado, setEstado] = useState('idle'); // idle | extraindo | revisao | erro
+  const [extraido, setExtraido] = useState(null);
+  const [form, setForm] = useState(null);
+  const [arqInfo, setArqInfo] = useState(null);
+  const inputRef = useRef();
+
+  const processar = async (file) => {
+    setEstado('extraindo');
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const texto = await extrairTextoPDF(file);
+      const dados = parsearDJE(texto);
+
+      // Comprime o arquivo
+      const comprimido = await comprimirArquivo(arrayBuffer);
+      const base64 = comprimido
+        ? 'data:application/gzip;base64,' + uint8ToBase64(comprimido)
+        : 'data:application/pdf;base64,' + uint8ToBase64(new Uint8Array(arrayBuffer));
+
+      setArqInfo({
+        nome: file.name,
+        tipo: comprimido ? 'application/gzip' : 'application/pdf',
+        tamanho: file.size,
+        tamanhoComprimido: comprimido ? comprimido.length : file.size,
+        base64,
+        nomeOriginal: file.name,
+      });
+
+      setExtraido(dados);
+      setForm({
+        numero: dados.num,
+        tipo: 'juridico',
+        fase: 'Conhecimento',
+        parte: dados.autor,
+        tribunal: dados.tribunal,
+        tramitacao: dados.vara,
+        audData: dados.data,
+        audHora: dados.hora,
+        audTipo: dados.tipoAud,
+        audLocal: dados.local,
+      });
+      setEstado('revisao');
+    } catch (e) {
+      setEstado('erro');
+      console.error(e);
+    }
+  };
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const salvar = () => {
+    const proc = {
+      id: uid(),
+      numero: form.numero,
+      tipo: form.tipo,
+      fase: form.fase,
+      parte: form.parte,
+      tribunal: form.tribunal,
+      tramitacao: form.tramitacao,
+      audiencias: form.audData ? [{
+        id: uid(), data: form.audData, hora: form.audHora,
+        tipo: form.audTipo, local: form.audLocal, obs: '',
+      }] : [],
+      arquivos: arqInfo ? [{
+        id: uid(),
+        nome: arqInfo.nomeOriginal,
+        tipo: arqInfo.tipo,
+        tamanho: arqInfo.tamanho,
+        tamanhoComprimido: arqInfo.tamanhoComprimido,
+        base64: arqInfo.base64,
+        url: null,
+        addedAt: now(),
+      }] : [],
+      notas: [],
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    onSalvar(proc);
+  };
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 }}>
+      <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:16, padding:28, width:600, maxWidth:'95vw', maxHeight:'90vh', overflow:'auto' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+          <div style={{ fontWeight:800, fontSize:17 }}>📄 Importar DJE</div>
+          <button className="btn-ghost" onClick={onFechar} style={{ fontSize:18 }}>✕</button>
+        </div>
+
+        {estado === 'idle' && (
+          <div>
+            <div
+              onClick={() => inputRef.current.click()}
+              onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor='var(--blue)'; }}
+              onDragLeave={e => e.currentTarget.style.borderColor='var(--border)'}
+              onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor='var(--border)'; const f=e.dataTransfer.files[0]; if(f)processar(f); }}
+              style={{ border:'2px dashed var(--border)', borderRadius:12, padding:'40px 24px', textAlign:'center', cursor:'pointer', transition:'border-color .2s' }}>
+              <div style={{ fontSize:48, marginBottom:12 }}>📄</div>
+              <div style={{ fontWeight:700, fontSize:15, marginBottom:6 }}>Arraste o PDF do DJE aqui</div>
+              <div style={{ color:'var(--muted)', fontSize:13 }}>ou clique para selecionar</div>
+            </div>
+            <input ref={inputRef} type="file" accept=".pdf" style={{ display:'none' }} onChange={e => { const f=e.target.files[0]; if(f)processar(f); }} />
+          </div>
+        )}
+
+        {estado === 'extraindo' && (
+          <div style={{ textAlign:'center', padding:'40px 0', color:'var(--muted)' }}>
+            <div style={{ fontSize:40, marginBottom:12 }}>⏳</div>
+            <div>Extraindo informações do PDF...</div>
+          </div>
+        )}
+
+        {estado === 'erro' && (
+          <div style={{ textAlign:'center', padding:'32px 0' }}>
+            <div style={{ fontSize:40, marginBottom:12 }}>❌</div>
+            <div style={{ color:'var(--red)', marginBottom:16 }}>Não foi possível ler o PDF.</div>
+            <button className="btn-secondary" onClick={() => setEstado('idle')}>Tentar outro arquivo</button>
+          </div>
+        )}
+
+        {estado === 'revisao' && form && (
+          <div>
+            <div style={{ background:'rgba(16,185,129,.08)', border:'1px solid rgba(16,185,129,.3)', borderRadius:8, padding:'10px 14px', marginBottom:16, fontSize:13, color:'#6ee7b7' }}>
+              ✅ Dados extraídos do PDF. Revise e confirme.
+              {arqInfo && <span style={{ marginLeft:8, color:'var(--muted)' }}>
+                {fmtTamanho(arqInfo.tamanho)} → {fmtTamanho(arqInfo.tamanhoComprimido)}
+                {arqInfo.tamanhoComprimido < arqInfo.tamanho && ` (${Math.round((1-arqInfo.tamanhoComprimido/arqInfo.tamanho)*100)}% menor)`}
+              </span>}
+            </div>
+
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
+              <div className="field" style={{ gridColumn:'1/-1' }}>
+                <label>Número do processo</label>
+                <input value={form.numero} onChange={e=>set('numero',e.target.value)} />
+              </div>
+              <div className="field">
+                <label>Tipo</label>
+                <select value={form.tipo} onChange={e=>set('tipo',e.target.value)}>
+                  <option value="juridico">⚖️ Jurídico</option>
+                  <option value="administrativo">🏛️ Administrativo</option>
+                </select>
+              </div>
+              <div className="field">
+                <label>Fase</label>
+                <select value={form.fase} onChange={e=>set('fase',e.target.value)}>
+                  <option>Conhecimento</option><option>Execução</option><option>Arquivado</option>
+                </select>
+              </div>
+              <div className="field" style={{ gridColumn:'1/-1' }}>
+                <label>Parte contrária (autor/reclamante)</label>
+                <input value={form.parte} onChange={e=>set('parte',e.target.value)} />
+              </div>
+              <div className="field">
+                <label>Tribunal</label>
+                <input value={form.tribunal} onChange={e=>set('tribunal',e.target.value)} />
+              </div>
+              <div className="field">
+                <label>Vara / Tramitação</label>
+                <input value={form.tramitacao} onChange={e=>set('tramitacao',e.target.value)} />
+              </div>
+            </div>
+
+            {(form.audData || form.audHora) && (
+              <div style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:10, padding:14, marginBottom:16 }}>
+                <div style={{ fontWeight:700, fontSize:13, marginBottom:10 }}>📅 Audiência identificada</div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
+                  <div className="field"><label>Data</label><input type="date" value={form.audData} onChange={e=>set('audData',e.target.value)} /></div>
+                  <div className="field"><label>Hora</label><input type="time" value={form.audHora} onChange={e=>set('audHora',e.target.value)} /></div>
+                  <div className="field"><label>Tipo</label><input value={form.audTipo} onChange={e=>set('audTipo',e.target.value)} /></div>
+                </div>
+                <div className="field" style={{ marginTop:8 }}>
+                  <label>Local / Link</label>
+                  <input value={form.audLocal} onChange={e=>set('audLocal',e.target.value)} />
+                </div>
+              </div>
+            )}
+
+            <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+              <button className="btn-secondary" onClick={() => { setEstado('idle'); setForm(null); setArqInfo(null); }}>← Outro arquivo</button>
+              <button className="btn-primary" onClick={salvar} disabled={!form.numero || !form.parte}>
+                ✅ Salvar processo
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
