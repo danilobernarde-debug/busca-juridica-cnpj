@@ -1264,8 +1264,22 @@ function ModalDJE({ onSalvar, onFechar, claudeKey, processos }) {
   const [arqInfo, setArqInfo] = useState(null);
   const inputRef = useRef();
 
-  const extraidosRef = useRef([]);  // array fixo, evita stale closure
-  const indiceRef = useRef(0);
+  const extraidosRef = useRef([]);   // { nome, resultado }[]
+  const indiceRef   = useRef(0);
+  const decisoesRef = useRef([]);    // { acao:'salvar'|'pular', form }[] — um por índice
+
+  const formParaProcesso = (f) => {
+    const r = f._resultado;
+    const aud = f.audData ? [{ id: uid(), data: f.audData, hora: f.audHora, tipo: f.audTipo, local: f.audLocal, obs: '' }] : [];
+    return {
+      ...r.processo,
+      numero: f.numero, tipo: f.tipo, fase: f.fase, parte: f.parte,
+      tribunal: f.tribunal, tramitacao: f.tramitacao,
+      audiencias: r.tipo === 'atualizar'
+        ? [...(r.processo.audiencias||[]).filter(a => !aud.find(b => b.data === a.data)), ...aud]
+        : aud,
+    };
+  };
 
   const iniciarProcessamento = async (files) => {
     const lista = Array.from(files).filter(f => f.name.endsWith('.pdf'));
@@ -1289,64 +1303,79 @@ function ModalDJE({ onSalvar, onFechar, claudeKey, processos }) {
 
     if (!extraidos.length) { setEstado('concluido'); return; }
 
-    // Abre revisão do primeiro
     extraidosRef.current = extraidos;
-    indiceRef.current = 0;
-    abrirRevisao(extraidos[0].resultado);
+    decisoesRef.current  = new Array(extraidos.length).fill(null);
+    indiceRef.current    = 0;
+    abrirItem(0);
   };
 
-  const abrirRevisao = (resultado) => {
-    const p = resultado.processo;
-    const aud = p.audiencias?.[0];
-    setForm({
-      numero: p.numero, tipo: p.tipo, fase: p.fase, parte: p.parte,
-      tribunal: p.tribunal, tramitacao: p.tramitacao,
-      audData: aud?.data||'', audHora: aud?.hora||'',
-      audTipo: aud?.tipo||'Audiência', audLocal: aud?.local||'',
-      _resultado: resultado,
-    });
+  const abrirItem = (idx) => {
+    const item = extraidosRef.current[idx];
+    const decisaoSalva = decisoesRef.current[idx];
+    // Restaura form anterior se o usuário já tinha editado este item
+    if (decisaoSalva?.form) {
+      setForm(decisaoSalva.form);
+    } else {
+      const p = item.resultado.processo;
+      const aud = p.audiencias?.[0];
+      setForm({
+        numero: p.numero, tipo: p.tipo, fase: p.fase, parte: p.parte,
+        tribunal: p.tribunal, tramitacao: p.tramitacao,
+        audData: aud?.data||'', audHora: aud?.hora||'',
+        audTipo: aud?.tipo||'Audiência', audLocal: aud?.local||'',
+        _resultado: item.resultado,
+      });
+    }
     setEstado('revisao');
   };
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const avancar = (salvar) => {
+  const confirmarAtual = () => {
     const idx = indiceRef.current;
-    const nomeAtual = extraidosRef.current[idx]?.nome;
-
-    if (salvar) {
-      const r = form._resultado;
-      const aud = form.audData ? [{ id: uid(), data: form.audData, hora: form.audHora, tipo: form.audTipo, local: form.audLocal, obs: '' }] : [];
-      const proc = {
-        ...r.processo,
-        numero: form.numero, tipo: form.tipo, fase: form.fase, parte: form.parte,
-        tribunal: form.tribunal, tramitacao: form.tramitacao,
-        audiencias: r.tipo === 'atualizar'
-          ? [...(r.processo.audiencias||[]).filter(a => !aud.find(b=>b.data===a.data)), ...aud]
-          : aud,
-      };
-      onSalvar({ tipo: r.tipo, processo: proc });
-      setFila(prev => prev.map(item =>
-        item.nome === nomeAtual ? { ...item, status: 'ok', resultado: form._resultado } : item
-      ));
-    } else {
-      setFila(prev => prev.map(item =>
-        item.nome === nomeAtual ? { ...item, status: 'pulado' } : item
-      ));
-    }
-
+    decisoesRef.current[idx] = { acao: 'salvar', form };
     const proximo = idx + 1;
-    indiceRef.current = proximo;
-
     if (proximo < extraidosRef.current.length) {
-      abrirRevisao(extraidosRef.current[proximo].resultado);
+      indiceRef.current = proximo;
+      abrirItem(proximo);
     } else {
-      setEstado('concluido');
+      // Último item confirmado — salva tudo e encerra
+      finalizarTudo();
     }
   };
 
-  const confirmarRevisao = () => avancar(true);
-  const pularRevisao    = () => avancar(false);
+  const pularAtual = () => {
+    const idx = indiceRef.current;
+    decisoesRef.current[idx] = { acao: 'pular', form };
+    const proximo = idx + 1;
+    if (proximo < extraidosRef.current.length) {
+      indiceRef.current = proximo;
+      abrirItem(proximo);
+    } else {
+      finalizarTudo();
+    }
+  };
+
+  const voltarAnterior = () => {
+    if (indiceRef.current === 0) return;
+    // Salva o estado do form atual antes de voltar
+    decisoesRef.current[indiceRef.current] = { acao: decisoesRef.current[indiceRef.current]?.acao || 'pendente', form };
+    indiceRef.current--;
+    abrirItem(indiceRef.current);
+  };
+
+  const finalizarTudo = () => {
+    const decisoes = decisoesRef.current;
+    decisoes.forEach((d, i) => {
+      if (d?.acao === 'salvar') onSalvar({ tipo: d.form._resultado.tipo, processo: formParaProcesso(d.form) });
+    });
+    setFila(prev => prev.map((item, i) => {
+      const d = decisoes[i];
+      if (!d) return item;
+      return { ...item, status: d.acao === 'salvar' ? 'ok' : 'pulado', resultado: d.form?._resultado };
+    }));
+    setEstado('concluido');
+  };
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.7)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000 }}>
@@ -1393,51 +1422,85 @@ function ModalDJE({ onSalvar, onFechar, claudeKey, processos }) {
           </div>
         )}
 
-        {estado === 'revisao' && form && (
-          <div>
-            <div style={{ background: form._resultado?.tipo==='atualizar' ? 'rgba(245,158,11,.08)' : 'rgba(16,185,129,.08)', border:`1px solid ${form._resultado?.tipo==='atualizar'?'rgba(245,158,11,.3)':'rgba(16,185,129,.3)'}`, borderRadius:8, padding:'10px 14px', marginBottom:16, fontSize:13, color: form._resultado?.tipo==='atualizar'?'#fcd34d':'#6ee7b7' }}>
-              {form._resultado?.tipo==='atualizar' ? '⚠️ Processo já existe — a notificação será adicionada a ele.' : '✅ Dados extraídos da notificação. Revise e confirme.'}
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
-              <div className="field" style={{ gridColumn:'1/-1' }}><label>Número</label><input value={form.numero} onChange={e=>set('numero',e.target.value)} /></div>
-              <div className="field"><label>Tipo</label>
-                <select value={form.tipo} onChange={e=>set('tipo',e.target.value)}>
-                  <option value="juridico">⚖️ Jurídico</option>
-                  <option value="administrativo">🏛️ Administrativo</option>
-                </select>
+        {estado === 'revisao' && form && (() => {
+          const total   = extraidosRef.current.length;
+          const idx     = indiceRef.current;
+          const isUltimo = idx === total - 1;
+          const isMulti  = total > 1;
+          const decisoes = decisoesRef.current;
+
+          return (
+            <div>
+              {/* Banner: processo existente ou novo */}
+              <div style={{ background: form._resultado?.tipo==='atualizar' ? 'rgba(245,158,11,.08)' : 'rgba(16,185,129,.08)', border:`1px solid ${form._resultado?.tipo==='atualizar'?'rgba(245,158,11,.3)':'rgba(16,185,129,.3)'}`, borderRadius:8, padding:'10px 14px', marginBottom:16, fontSize:13, color: form._resultado?.tipo==='atualizar'?'#fcd34d':'#6ee7b7', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <span>{form._resultado?.tipo==='atualizar' ? '⚠️ Processo já existe — a notificação será adicionada a ele.' : '✅ Novo processo. Revise e confirme.'}</span>
+                {isMulti && <span style={{ color:'var(--muted)', fontSize:12 }}>{idx + 1} / {total}</span>}
               </div>
-              <div className="field"><label>Fase</label>
-                <select value={form.fase} onChange={e=>set('fase',e.target.value)}>
-                  <option>Conhecimento</option><option>Execução</option><option>Arquivado</option>
-                </select>
-              </div>
-              <div className="field" style={{ gridColumn:'1/-1' }}><label>Parte contrária</label><input value={form.parte} onChange={e=>set('parte',e.target.value)} /></div>
-              <div className="field"><label>Tribunal</label><input value={form.tribunal} onChange={e=>set('tribunal',e.target.value)} /></div>
-              <div className="field"><label>Vara / Tramitação</label><input value={form.tramitacao} onChange={e=>set('tramitacao',e.target.value)} /></div>
-            </div>
-            {form.audData && (
-              <div style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:10, padding:14, marginBottom:16 }}>
-                <div style={{ fontWeight:700, fontSize:13, marginBottom:10 }}>📅 Audiência identificada</div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
-                  <div className="field"><label>Data</label><input type="date" value={form.audData} onChange={e=>set('audData',e.target.value)} /></div>
-                  <div className="field"><label>Hora</label><input type="time" value={form.audHora} onChange={e=>set('audHora',e.target.value)} /></div>
-                  <div className="field"><label>Tipo</label><input value={form.audTipo} onChange={e=>set('audTipo',e.target.value)} /></div>
+
+              {/* Formulário */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
+                <div className="field" style={{ gridColumn:'1/-1' }}><label>Número</label><input value={form.numero} onChange={e=>set('numero',e.target.value)} /></div>
+                <div className="field"><label>Tipo</label>
+                  <select value={form.tipo} onChange={e=>set('tipo',e.target.value)}>
+                    <option value="juridico">⚖️ Jurídico</option>
+                    <option value="administrativo">🏛️ Administrativo</option>
+                  </select>
                 </div>
-                <div className="field" style={{ marginTop:8 }}><label>Local / Link</label><input value={form.audLocal} onChange={e=>set('audLocal',e.target.value)} /></div>
+                <div className="field"><label>Fase</label>
+                  <select value={form.fase} onChange={e=>set('fase',e.target.value)}>
+                    <option>Conhecimento</option><option>Execução</option><option>Arquivado</option>
+                  </select>
+                </div>
+                <div className="field" style={{ gridColumn:'1/-1' }}><label>Parte contrária</label><input value={form.parte} onChange={e=>set('parte',e.target.value)} /></div>
+                <div className="field"><label>Tribunal</label><input value={form.tribunal} onChange={e=>set('tribunal',e.target.value)} /></div>
+                <div className="field"><label>Vara / Tramitação</label><input value={form.tramitacao} onChange={e=>set('tramitacao',e.target.value)} /></div>
               </div>
-            )}
-            <div style={{ display:'flex', gap:10, justifyContent:'space-between', alignItems:'center' }}>
-              <div style={{ fontSize:12, color:'var(--muted)' }}>
-                {extraidosRef.current.length > 1 && `Notificação ${indiceRef.current + 1} de ${extraidosRef.current.length}`}
-              </div>
-              <div style={{ display:'flex', gap:8 }}>
-                <button className="btn-secondary" onClick={() => { setEstado('idle'); setForm(null); }}>← Cancelar</button>
-                {extraidosRef.current.length > 1 && <button className="btn-secondary" onClick={pularRevisao}>Pular →</button>}
-                <button className="btn-primary" onClick={confirmarRevisao} disabled={!form.numero||!form.parte}>✅ Confirmar</button>
+
+              {form.audData && (
+                <div style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:10, padding:14, marginBottom:16 }}>
+                  <div style={{ fontWeight:700, fontSize:13, marginBottom:10 }}>📅 Audiência identificada</div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
+                    <div className="field"><label>Data</label><input type="date" value={form.audData} onChange={e=>set('audData',e.target.value)} /></div>
+                    <div className="field"><label>Hora</label><input type="time" value={form.audHora} onChange={e=>set('audHora',e.target.value)} /></div>
+                    <div className="field"><label>Tipo</label><input value={form.audTipo} onChange={e=>set('audTipo',e.target.value)} /></div>
+                  </div>
+                  <div className="field" style={{ marginTop:8 }}><label>Local / Link</label><input value={form.audLocal} onChange={e=>set('audLocal',e.target.value)} /></div>
+                </div>
+              )}
+
+              {/* Resumo das anteriores (só no último item com múltiplos) */}
+              {isUltimo && isMulti && (
+                <div style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:10, padding:'10px 14px', marginBottom:16 }}>
+                  <div style={{ fontWeight:700, fontSize:12, color:'var(--muted)', marginBottom:8, textTransform:'uppercase', letterSpacing:'.04em' }}>Decisões anteriores</div>
+                  {extraidosRef.current.slice(0, idx).map((item, i) => {
+                    const d = decisoes[i];
+                    const acao = d?.acao || 'pendente';
+                    return (
+                      <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'4px 0', fontSize:12 }}>
+                        <span>{acao==='salvar'?'✅':acao==='pular'?'⏭️':'⬜'}</span>
+                        <span style={{ flex:1, color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                          {d?.form?.numero || item.nome}
+                        </span>
+                        <span style={{ color: acao==='salvar'?'var(--green)':'var(--muted)' }}>
+                          {acao==='salvar' ? (d.form._resultado?.tipo==='atualizar'?'adicionar':'criar') : 'pular'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Botões */}
+              <div style={{ display:'flex', gap:8, justifyContent:'flex-end', alignItems:'center' }}>
+                {idx > 0 && <button className="btn-secondary" onClick={voltarAnterior}>← Voltar</button>}
+                {!isUltimo && <button className="btn-secondary" onClick={pularAtual}>Pular →</button>}
+                <button className="btn-primary" onClick={confirmarAtual} disabled={!form.numero||!form.parte}>
+                  {isUltimo && isMulti ? '✅ Confirmar e finalizar' : '✅ Confirmar'}
+                </button>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {estado === 'concluido' && (
           <div>
