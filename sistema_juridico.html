@@ -1005,9 +1005,16 @@ function App() {
       {showDJE && (
         <ModalDJE
           claudeKey={config.claudeKey}
+          processos={processos}
           onFechar={() => setShowDJE(false)}
-          onSalvar={(proc) => {
-            addProcesso(proc);
+          onSalvar={({ tipo, processo }) => {
+            if (tipo === 'criar') {
+              addProcesso(processo);
+            } else {
+              updateProcesso(processo);
+              setProcessoAberto(processo);
+              setView('detalhe');
+            }
             setShowDJE(false);
           }}
         />
@@ -1184,10 +1191,11 @@ function uint8ToBase64(u8) {
 }
 
 // ─── MODAL DE IMPORT DJE ─────────────────────────────────────────────────────
-function ModalDJE({ onSalvar, onFechar, claudeKey }) {
-  const [estado, setEstado] = useState('idle'); // idle | extraindo | ia | revisao | erro
+function ModalDJE({ onSalvar, onFechar, claudeKey, processos }) {
+  const [estado, setEstado] = useState('idle'); // idle | extraindo | ia | conflito | revisao | semchave | erro
   const [statusMsg, setStatusMsg] = useState('');
   const [form, setForm] = useState(null);
+  const [procExistente, setProcExistente] = useState(null);
   const [arqInfo, setArqInfo] = useState(null);
   const inputRef = useRef();
 
@@ -1228,8 +1236,7 @@ function ModalDJE({ onSalvar, onFechar, claudeKey }) {
         nomeOriginal: file.name,
       });
 
-      setExtraido(dados);
-      setForm({
+      const formBase = {
         numero: dados.num,
         tipo: 'juridico',
         fase: 'Conhecimento',
@@ -1240,8 +1247,19 @@ function ModalDJE({ onSalvar, onFechar, claudeKey }) {
         audHora: dados.hora,
         audTipo: dados.tipoAud,
         audLocal: dados.local,
-      });
-      setEstado('revisao');
+      };
+      setForm(formBase);
+
+      // Verifica se o processo já existe no sistema
+      const existe = dados.num && processos.find(p =>
+        p.numero.replace(/[\s.\-\/]/g,'') === dados.num.replace(/[\s.\-\/]/g,'')
+      );
+      if (existe) {
+        setProcExistente(existe);
+        setEstado('conflito');
+      } else {
+        setEstado('revisao');
+      }
     } catch (e) {
       setEstado('erro');
       console.error(e);
@@ -1249,6 +1267,34 @@ function ModalDJE({ onSalvar, onFechar, claudeKey }) {
   };
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const mkArquivo = () => arqInfo ? [{
+    id: uid(), nome: arqInfo.nomeOriginal, tipo: arqInfo.tipo,
+    tamanho: arqInfo.tamanho, tamanhoComprimido: arqInfo.tamanhoComprimido,
+    base64: arqInfo.base64, url: null, addedAt: now(),
+  }] : [];
+
+  const mkAudiencia = () => form.audData ? [{
+    id: uid(), data: form.audData, hora: form.audHora,
+    tipo: form.audTipo, local: form.audLocal, obs: '',
+  }] : [];
+
+  const salvarNoExistente = () => {
+    const p = procExistente;
+    const atualizado = {
+      ...p,
+      audiencias: [...(p.audiencias||[]), ...mkAudiencia()],
+      arquivos:   [...(p.arquivos||[]),   ...mkArquivo()],
+      notas:      [...(p.notas||[]), {
+        id: uid(),
+        texto: `Notificação recebida via DJE${form.audData ? ` — Audiência ${form.audTipo} em ${fmtData(form.audData)}${form.audHora?' às '+form.audHora:''}` : ''}`,
+        autor: 'Importado DJE',
+        createdAt: now(),
+      }],
+      updatedAt: now(),
+    };
+    onSalvar({ tipo: 'atualizar', processo: atualizado });
+  };
 
   const salvar = () => {
     const proc = {
@@ -1259,25 +1305,13 @@ function ModalDJE({ onSalvar, onFechar, claudeKey }) {
       parte: form.parte,
       tribunal: form.tribunal,
       tramitacao: form.tramitacao,
-      audiencias: form.audData ? [{
-        id: uid(), data: form.audData, hora: form.audHora,
-        tipo: form.audTipo, local: form.audLocal, obs: '',
-      }] : [],
-      arquivos: arqInfo ? [{
-        id: uid(),
-        nome: arqInfo.nomeOriginal,
-        tipo: arqInfo.tipo,
-        tamanho: arqInfo.tamanho,
-        tamanhoComprimido: arqInfo.tamanhoComprimido,
-        base64: arqInfo.base64,
-        url: null,
-        addedAt: now(),
-      }] : [],
+      audiencias: mkAudiencia(),
+      arquivos: mkArquivo(),
       notas: [],
       createdAt: now(),
       updatedAt: now(),
     };
-    onSalvar(proc);
+    onSalvar({ tipo: 'criar', processo: proc });
   };
 
   return (
@@ -1311,6 +1345,43 @@ function ModalDJE({ onSalvar, onFechar, claudeKey }) {
               {estado === 'ia' ? 'Analisando com IA...' : 'Lendo PDF...'}
             </div>
             <div style={{ fontSize:13 }}>{statusMsg}</div>
+          </div>
+        )}
+
+        {estado === 'conflito' && procExistente && (
+          <div>
+            <div style={{ background:'rgba(245,158,11,.08)', border:'1px solid rgba(245,158,11,.3)', borderRadius:10, padding:'14px 16px', marginBottom:20 }}>
+              <div style={{ fontWeight:700, color:'#fcd34d', marginBottom:6 }}>⚠️ Processo já existe no sistema</div>
+              <div style={{ fontFamily:'monospace', fontSize:13, color:'var(--text)', marginBottom:4 }}>{procExistente.numero}</div>
+              <div style={{ fontSize:13, color:'var(--muted)' }}>{procExistente.parte} · {procExistente.tribunal}</div>
+            </div>
+
+            <div style={{ fontSize:14, fontWeight:600, marginBottom:12 }}>O que deseja fazer com esta notificação?</div>
+
+            <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:20 }}>
+              <div onClick={salvarNoExistente}
+                style={{ background:'var(--surface2)', border:'1px solid rgba(16,185,129,.3)', borderRadius:10, padding:'14px 16px', cursor:'pointer', transition:'border-color .2s' }}
+                onMouseEnter={e=>e.currentTarget.style.borderColor='var(--green)'}
+                onMouseLeave={e=>e.currentTarget.style.borderColor='rgba(16,185,129,.3)'}>
+                <div style={{ fontWeight:700, color:'var(--green)', marginBottom:4 }}>✅ Adicionar ao processo existente</div>
+                <div style={{ fontSize:12, color:'var(--muted)' }}>
+                  Salva o PDF na aba Arquivos, registra uma nota e
+                  {form?.audData && ` agenda a audiência de ${fmtData(form.audData)}`}.
+                </div>
+              </div>
+
+              <div onClick={() => { setProcExistente(null); setEstado('revisao'); }}
+                style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:10, padding:'14px 16px', cursor:'pointer', transition:'border-color .2s' }}
+                onMouseEnter={e=>e.currentTarget.style.borderColor='var(--blue)'}
+                onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+                <div style={{ fontWeight:700, marginBottom:4 }}>➕ Criar processo separado</div>
+                <div style={{ fontSize:12, color:'var(--muted)' }}>Cria uma nova entrada independente no sistema.</div>
+              </div>
+            </div>
+
+            <div style={{ display:'flex', justifyContent:'flex-end' }}>
+              <button className="btn-ghost" onClick={() => setEstado('idle')}>← Voltar</button>
+            </div>
           </div>
         )}
 
