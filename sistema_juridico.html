@@ -9,6 +9,7 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.local.js" onerror="void(0)"></script>
   <style>
     :root {
@@ -45,6 +46,86 @@
 <div id="root"></div>
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+// ─── SUPABASE ─────────────────────────────────────────────────────────────────
+const sbClient = (window.SUPABASE_URL && window.SUPABASE_KEY && window.supabase)
+  ? window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_KEY)
+  : null;
+
+async function sb_carregar() {
+  const { data, error } = await sbClient
+    .from('jud_processos')
+    .select('*, jud_audiencias(*), jud_notas(*), jud_arquivos(*)')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data.map(p => ({
+    id: p.id,
+    numero: p.numero,
+    tipo: p.tipo,
+    fase: p.fase,
+    parte: p.parte || '',
+    tribunal: p.tribunal || '',
+    tramitacao: p.tramitacao || '',
+    audiencias: (p.jud_audiencias || [])
+      .sort((a,b) => a.data.localeCompare(b.data))
+      .map(a => ({ id:a.id, data:a.data, hora:a.hora?.slice(0,5)||'', tipo:a.tipo||'', local:a.local||'', obs:a.obs||'' })),
+    notas: (p.jud_notas || [])
+      .sort((a,b) => a.created_at.localeCompare(b.created_at))
+      .map(n => ({ id:n.id, texto:n.texto, autor:n.autor, createdAt:n.created_at })),
+    arquivos: (p.jud_arquivos || [])
+      .map(f => ({ id:f.id, nome:f.nome, tipo:f.tipo||'', tamanho:f.tamanho||0, tamanhoComprimido:f.tamanho_comprimido||0, base64:f.base64, url:f.url_externa, addedAt:f.created_at })),
+    createdAt: p.created_at,
+    updatedAt: p.updated_at,
+  }));
+}
+
+async function sb_salvar(proc) {
+  const { data: pd, error: pe } = await sbClient.from('jud_processos').upsert({
+    id: proc.id,
+    numero: proc.numero, tipo: proc.tipo, fase: proc.fase,
+    parte: proc.parte || '', tribunal: proc.tribunal || '', tramitacao: proc.tramitacao || '',
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'id' }).select().single();
+  if (pe) throw pe;
+  const pid = pd.id;
+
+  await sbClient.from('jud_audiencias').delete().eq('processo_id', pid);
+  if (proc.audiencias?.length) {
+    const { error } = await sbClient.from('jud_audiencias').insert(
+      proc.audiencias.map(a => ({ id:a.id, processo_id:pid, data:a.data, hora:a.hora||null, tipo:a.tipo, local:a.local||'', obs:a.obs||'' }))
+    );
+    if (error) throw error;
+  }
+
+  await sbClient.from('jud_notas').delete().eq('processo_id', pid);
+  if (proc.notas?.length) {
+    const { error } = await sbClient.from('jud_notas').insert(
+      proc.notas.map(n => ({ id:n.id, processo_id:pid, texto:n.texto, autor:n.autor||'Usuário', created_at:n.createdAt }))
+    );
+    if (error) throw error;
+  }
+
+  await sbClient.from('jud_arquivos').delete().eq('processo_id', pid);
+  if (proc.arquivos?.length) {
+    const { error } = await sbClient.from('jud_arquivos').insert(
+      proc.arquivos.map(f => ({ id:f.id, processo_id:pid, nome:f.nome, tipo:f.tipo||'', tamanho:f.tamanho||0, tamanho_comprimido:f.tamanhoComprimido||0, base64:f.base64||null, url_externa:f.url||null }))
+    );
+    if (error) throw error;
+  }
+
+  return { ...proc, id: pid };
+}
+
+async function sb_deletar(id) {
+  const { error } = await sbClient.from('jud_processos').delete().eq('id', id);
+  if (error) throw error;
+}
+
+async function sb_migrar(processos) {
+  for (const proc of processos) {
+    await sb_salvar(proc);
+  }
+}
 
 // ─── DADOS INICIAIS ──────────────────────────────────────────────────────────
 const PROCESSOS_INICIAIS = [
@@ -886,33 +967,46 @@ Responda em português, de forma objetiva e direta. Destaque urgências e prazos
 }
 
 // ─── CONFIGURAÇÕES ────────────────────────────────────────────────────────────
-function Configuracoes({ config, onSave }) {
+function Configuracoes({ config, onSave, onMigrar, supabaseOk, erroSB }) {
   const [key, setKey] = useState(config.claudeKey||'');
   return (
     <div style={{ flex:1, overflow:'auto', padding:28 }}>
       <div style={{ fontWeight:800, fontSize:18, marginBottom:20 }}>⚙️ Configurações</div>
-      <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:24, maxWidth:600 }}>
+
+      <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:24, maxWidth:600, marginBottom:16 }}>
+        <div style={{ fontWeight:700, fontSize:14, marginBottom:12 }}>☁️ Supabase</div>
+        <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', background:'var(--surface2)', borderRadius:8, marginBottom:12, fontSize:13 }}>
+          <span style={{ fontSize:16 }}>{supabaseOk ? '🟢' : '🔴'}</span>
+          <span style={{ flex:1 }}>{supabaseOk ? 'Conectado — dados salvando no Supabase' : (erroSB || 'Não configurado — usando localStorage')}</span>
+        </div>
+        {supabaseOk && (
+          <button className="btn-secondary" onClick={onMigrar}>
+            ⬆️ Migrar dados locais para o Supabase
+          </button>
+        )}
+      </div>
+
+      <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:24, maxWidth:600, marginBottom:16 }}>
         <div className="field" style={{ marginBottom:16 }}>
           <label>Chave API Claude (Anthropic)</label>
           <input type="password" value={key} onChange={e=>setKey(e.target.value)} placeholder="sk-ant-..." />
           <div style={{ fontSize:11, color:'var(--muted)', marginTop:4 }}>
-            Necessária para usar a IA. Obtenha em console.anthropic.com. A chave fica salva apenas no seu navegador.
+            Necessária para usar a IA. Obtenha em console.anthropic.com.
           </div>
         </div>
-        <button className="btn-primary" onClick={()=>onSave({...config,claudeKey:key})}>Salvar configurações</button>
+        <button className="btn-primary" onClick={()=>onSave({...config,claudeKey:key})}>Salvar</button>
       </div>
 
-      <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:24, maxWidth:600, marginTop:16 }}>
-        <div style={{ fontWeight:700, fontSize:14, marginBottom:12 }}>🗂️ Dados</div>
-        <div style={{ fontSize:13, color:'var(--muted)', marginBottom:12 }}>Todos os dados são salvos localmente no navegador (localStorage). Nenhuma informação é enviada a servidores externos.</div>
+      <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:24, maxWidth:600 }}>
+        <div style={{ fontWeight:700, fontSize:14, marginBottom:12 }}>🗂️ Backup local</div>
         <div style={{ display:'flex', gap:8 }}>
           <button className="btn-secondary" onClick={() => {
             const data = localStorage.getItem(STORAGE_KEY);
-            if (!data) return;
+            if (!data) { alert('Nenhum dado local.'); return; }
             const blob = new Blob([data], { type:'application/json' });
             const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'backup_juridico.json'; a.click();
           }}>⬇️ Exportar backup</button>
-          <button className="btn-danger" onClick={() => { if(confirm('Isso apagará TODOS os dados. Confirma?')) { localStorage.removeItem(STORAGE_KEY); location.reload(); }}}>🗑️ Apagar todos os dados</button>
+          <button className="btn-danger" onClick={() => { if(confirm('Apagar dados locais?')) { localStorage.removeItem(STORAGE_KEY); location.reload(); }}}>🗑️ Apagar local</button>
         </div>
       </div>
     </div>
@@ -942,47 +1036,96 @@ function fmtTamanho(b) {
 
 // ─── APP PRINCIPAL ────────────────────────────────────────────────────────────
 function App() {
-  const [data, setData] = useState(() => loadData());
+  const [processos, setProcessos] = useState([]);
+  const [config, setConfig] = useState({ claudeKey: window.CLAUDE_KEY || '' });
+  const [carregando, setCarregando] = useState(true);
+  const [erroSB, setErroSB] = useState(null);
   const [view, setView] = useState('dashboard');
   const [processoAberto, setProcessoAberto] = useState(null);
   const [adicionando, setAdicionando] = useState(null);
   const [showDJE, setShowDJE] = useState(false);
 
-  const { processos, config } = data;
+  useEffect(() => { inicializar(); }, []);
 
-  const salvar = useCallback((novoData) => {
-    setData(novoData);
-    saveData(novoData);
-  }, []);
+  const inicializar = async () => {
+    if (sbClient) {
+      try {
+        const dados = await sb_carregar();
+        setProcessos(dados);
+        setErroSB(null);
+      } catch(e) {
+        console.error('Supabase:', e);
+        setErroSB(e.message);
+        const local = loadData();
+        setProcessos(local.processos || []);
+        setConfig(local.config || { claudeKey: window.CLAUDE_KEY || '' });
+      }
+    } else {
+      const local = loadData();
+      setProcessos(local.processos || []);
+      setConfig(local.config || { claudeKey: window.CLAUDE_KEY || '' });
+    }
+    setCarregando(false);
+  };
 
-  const updateProcesso = useCallback((proc) => {
-    salvar({ ...data, processos: processos.map(p => p.id === proc.id ? proc : p) });
+  const updateProcesso = useCallback(async (proc) => {
+    setProcessos(prev => prev.map(p => p.id === proc.id ? proc : p));
     if (processoAberto?.id === proc.id) setProcessoAberto(proc);
-  }, [data, processos, processoAberto, salvar]);
+    if (sbClient) { try { await sb_salvar(proc); } catch(e) { console.error(e); } }
+    else saveData({ processos: processos.map(p => p.id === proc.id ? proc : p), config });
+  }, [processos, processoAberto, config]);
 
-  const addProcesso = useCallback((proc) => {
-    const novoData = { ...data, processos: [proc, ...processos] };
-    salvar(novoData);
+  const addProcesso = useCallback(async (proc) => {
+    let saved = proc;
+    if (sbClient) {
+      try { saved = await sb_salvar(proc); } catch(e) { console.error(e); }
+    } else {
+      saveData({ processos: [proc, ...processos], config });
+    }
+    setProcessos(prev => [saved, ...prev.filter(p => p.id !== saved.id)]);
     setAdicionando(null);
-    setProcessoAberto(proc);
+    setProcessoAberto(saved);
     setView('detalhe');
-  }, [data, processos, salvar]);
+  }, [processos, config]);
 
-  const delProcesso = useCallback((id) => {
-    salvar({ ...data, processos: processos.filter(p => p.id !== id) });
+  const delProcesso = useCallback(async (id) => {
+    if (sbClient) { try { await sb_deletar(id); } catch(e) { console.error(e); } }
+    else saveData({ processos: processos.filter(p => p.id !== id), config });
+    setProcessos(prev => prev.filter(p => p.id !== id));
     setProcessoAberto(null);
     setView('dashboard');
-  }, [data, processos, salvar]);
+  }, [processos, config]);
 
   const saveConfig = useCallback((cfg) => {
-    salvar({ ...data, config: cfg });
-  }, [data, salvar]);
+    setConfig(cfg);
+    saveData({ processos, config: cfg });
+  }, [processos]);
+
+  const migrarLocalParaSB = async () => {
+    if (!sbClient) return;
+    const local = loadData();
+    if (!local.processos?.length) { alert('Nenhum dado local para migrar.'); return; }
+    if (!confirm(`Migrar ${local.processos.length} processos do localStorage para o Supabase?`)) return;
+    try {
+      await sb_migrar(local.processos);
+      const dados = await sb_carregar();
+      setProcessos(dados);
+      alert('Migração concluída!');
+    } catch(e) { alert('Erro na migração: ' + e.message); }
+  };
 
   const counts = {
     juridico: processos.filter(p=>p.tipo==='juridico'&&p.fase!=='Arquivado').length,
     adm: processos.filter(p=>p.tipo==='administrativo'&&p.fase!=='Arquivado').length,
     agenda: processos.flatMap(p=>(p.audiencias||[]).filter(a=>a.data>=new Date().toISOString().slice(0,10))).length,
   };
+
+  if (carregando) return (
+    <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:16, color:'var(--muted)' }}>
+      <div style={{ fontSize:40 }}>⚖️</div>
+      <div>Carregando dados{sbClient ? ' do Supabase' : ''}...</div>
+    </div>
+  );
 
   let mainContent;
   if (adicionando) {
@@ -1000,13 +1143,19 @@ function App() {
   } else if (view === 'ia') {
     mainContent = <IAChat processos={processos} claudeKey={config.claudeKey} />;
   } else if (view === 'config') {
-    mainContent = <Configuracoes config={config} onSave={saveConfig} />;
+    mainContent = <Configuracoes config={config} onSave={saveConfig} onMigrar={migrarLocalParaSB} supabaseOk={!!sbClient && !erroSB} erroSB={erroSB} />;
   }
 
   return (
     <React.Fragment>
       <Sidebar view={adicionando ? '' : view} setView={(v)=>{setView(v);setAdicionando(null);setProcessoAberto(null);}} counts={counts} />
       <div style={{ flex:1, display:'flex', flexDirection:'column', minWidth:0 }}>
+        {erroSB && (
+          <div style={{ background:'rgba(239,68,68,.08)', borderBottom:'1px solid rgba(239,68,68,.2)', padding:'8px 20px', fontSize:12, color:'var(--red)', display:'flex', gap:10, alignItems:'center' }}>
+            ⚠️ Supabase offline — usando dados locais. {erroSB}
+            <button className="btn-ghost" style={{ fontSize:11, marginLeft:'auto' }} onClick={inicializar}>Reconectar</button>
+          </div>
+        )}
         {mainContent}
       </div>
       {showDJE && (
@@ -1014,14 +1163,9 @@ function App() {
           claudeKey={config.claudeKey}
           processos={processos}
           onFechar={() => setShowDJE(false)}
-          onSalvar={({ tipo, processo }) => {
-            if (tipo === 'criar') {
-              addProcesso(processo);
-            } else {
-              updateProcesso(processo);
-              setProcessoAberto(processo);
-              setView('detalhe');
-            }
+          onSalvar={async ({ tipo, processo }) => {
+            if (tipo === 'criar') { await addProcesso(processo); }
+            else { await updateProcesso(processo); setProcessoAberto(processo); setView('detalhe'); }
             setShowDJE(false);
           }}
         />
