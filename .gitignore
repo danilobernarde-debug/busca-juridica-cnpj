@@ -10,3 +10,6 @@ desktop.ini
 # Node (caso futuramente use)
 node_modules/
 .env
+
+# Configuração local com chave API (nunca commitar)
+config.local.js
