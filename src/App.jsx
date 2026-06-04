@@ -18,6 +18,7 @@ import ProcessoDetalhe from './pages/ProcessoDetalhe/index.jsx';
 
 // ─── APP PRINCIPAL ────────────────────────────────────────────────────────────
 export default function App() {
+  const mobile = useMobile();
   const [user, setUser] = useState(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [processos, setProcessos] = useState([]);
@@ -199,7 +200,6 @@ export default function App() {
   );
 
   // Quando está em form/detalhe, esconde as páginas persistentes
-  const mobile = useMobile();
   const mostrarPersistente = !adicionando && view !== 'detalhe';
   const css = (v) => ({ display: mostrarPersistente && view === v ? 'flex' : 'none', flex: 1, flexDirection: 'column', minWidth: 0, overflow: 'auto' });
 
