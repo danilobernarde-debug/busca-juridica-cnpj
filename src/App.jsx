@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { sbClient, sb_carregar, sb_salvar, sb_deletar, sb_migrar } from './lib/supabase.js';
+import { sbClient, sb_carregar, sb_salvar, sb_deletar, sb_migrar, sb_carregarVistos, sb_marcarVisto } from './lib/supabase.js';
 import { loadData, saveData } from './lib/storage.js';
 import Sidebar from './components/Sidebar.jsx';
 import ProcessoForm from './components/ProcessoForm.jsx';
@@ -26,6 +26,13 @@ export default function App() {
   const [processoAberto, setProcessoAberto] = useState(null);
   const [adicionando, setAdicionando] = useState(null);
   const [showDJE, setShowDJE] = useState(false);
+  const [visitados, setVisitados] = useState(new Set());
+
+  const marcarVisitado = (id) => {
+    if (visitados.has(id)) return;
+    setVisitados(prev => { const n = new Set(prev); n.add(id); return n; });
+    if (user) sb_marcarVisto(user.id, id);
+  };
   const [showTexto, setShowTexto] = useState(false);
 
   useEffect(() => {
@@ -48,7 +55,7 @@ export default function App() {
       if (session?.user) {
         setUser(session.user);
         carregarPerfil(session.user.id);
-        carregarDados();
+        carregarDados(false, session.user.id);
       } else {
         setCarregando(false);
       }
@@ -59,8 +66,7 @@ export default function App() {
       if (event === 'SIGNED_IN' && session?.user) {
         setUser(session.user);
         carregarPerfil(session.user.id);
-        // Silencioso se já carregou antes (ex: volta de outra aba do browser)
-        carregarDados(jaCarregouRef.current);
+        carregarDados(jaCarregouRef.current, session.user.id);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setIsSuperAdmin(false);
@@ -72,11 +78,15 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const carregarDados = async (silencioso = false) => {
+  const carregarDados = async (silencioso = false, userId = null) => {
     if (!silencioso) setCarregando(true);
     try {
-      const dados = await sb_carregar();
+      const [dados, vistos] = await Promise.all([
+        sb_carregar(),
+        sb_carregarVistos(userId),
+      ]);
       setProcessos(dados);
+      setVisitados(vistos);
       setErroSB(null);
       jaCarregouRef.current = true;
     } catch (e) {
@@ -205,10 +215,10 @@ export default function App() {
         )}
 
         {/* Páginas principais — sempre montadas, escondidas via CSS para preservar estado */}
-        <div style={css('dashboard')}><Dashboard processos={processos} setView={setView} setProcessoAberto={setProcessoAberto} /></div>
-        <div style={css('juridico')}><ProcessoList processos={processos} tipo="juridico" setProcessoAberto={setProcessoAberto} setView={setView} onAdd={() => setAdicionando('juridico')} onImportDJE={() => setShowDJE(true)} onImportTexto={() => setShowTexto(true)} /></div>
-        <div style={css('adm')}><ProcessoList processos={processos} tipo="administrativo" setProcessoAberto={setProcessoAberto} setView={setView} onAdd={() => setAdicionando('administrativo')} onImportDJE={() => setShowDJE(true)} onImportTexto={() => setShowTexto(true)} /></div>
-        <div style={css('agenda')}><Agenda processos={processos} setProcessoAberto={setProcessoAberto} setView={setView} /></div>
+        <div style={css('dashboard')}><Dashboard processos={processos} setView={setView} setProcessoAberto={(p) => { marcarVisitado(p.id); setProcessoAberto(p); }} /></div>
+        <div style={css('juridico')}><ProcessoList processos={processos} tipo="juridico" visitados={visitados} setProcessoAberto={(p) => { marcarVisitado(p.id); setProcessoAberto(p); }} setView={setView} onAdd={() => setAdicionando('juridico')} onImportDJE={() => setShowDJE(true)} onImportTexto={() => setShowTexto(true)} /></div>
+        <div style={css('adm')}><ProcessoList processos={processos} tipo="administrativo" visitados={visitados} setProcessoAberto={(p) => { marcarVisitado(p.id); setProcessoAberto(p); }} setView={setView} onAdd={() => setAdicionando('administrativo')} onImportDJE={() => setShowDJE(true)} onImportTexto={() => setShowTexto(true)} /></div>
+        <div style={css('agenda')}><Agenda processos={processos} setProcessoAberto={(p) => { marcarVisitado(p.id); setProcessoAberto(p); }} setView={setView} /></div>
 
         {/* Páginas admin — montadas sob demanda */}
         {mostrarPersistente && view === 'usuarios' && (isSuperAdmin

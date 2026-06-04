@@ -231,6 +231,19 @@ CREATE POLICY "admin_acesso_total" ON jud_user_permissoes
   WITH CHECK (EXISTS (SELECT 1 FROM d_auth_user WHERE uuid = auth.uid() AND is_super_admin = TRUE));
 
 
+-- Rastreia quais processos cada usuário já visualizou
+CREATE TABLE jud_processos_vistos (
+  user_uuid   UUID NOT NULL REFERENCES d_auth_user(uuid) ON DELETE CASCADE,
+  processo_id UUID NOT NULL REFERENCES jud_processos(id) ON DELETE CASCADE,
+  visto_em    TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (user_uuid, processo_id)
+);
+ALTER TABLE jud_processos_vistos ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "proprio_usuario" ON jud_processos_vistos
+  FOR ALL TO authenticated
+  USING (user_uuid = auth.uid())
+  WITH CHECK (user_uuid = auth.uid());
+
 -- ─── SUPABASE STORAGE ─────────────────────────────────────────────────────────
 -- Criar manualmente no painel Supabase → Storage → New bucket:
 --   Nome: juridico

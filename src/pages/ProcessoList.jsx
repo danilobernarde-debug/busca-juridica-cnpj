@@ -3,7 +3,7 @@ import { fmtData } from '../lib/utils.js';
 import { FASE_STYLE, TIPO_STYLE } from '../constants/styles.js';
 import Badge from '../components/Badge.jsx';
 
-export default function ProcessoList({ processos, tipo, setProcessoAberto, setView, onAdd, onImportDJE, onImportTexto }) {
+export default function ProcessoList({ processos, tipo, setProcessoAberto, setView, onAdd, onImportDJE, onImportTexto, visitados = new Set() }) {
   const [busca, setBusca] = useState('');
   const [filtroFase, setFiltroFase] = useState('Todos');
   const [filtroTribunal, setFiltroTribunal] = useState('Todos');
@@ -11,6 +11,7 @@ export default function ProcessoList({ processos, tipo, setProcessoAberto, setVi
   const [filtroParte, setFiltroParte] = useState('');
   const [filtroAssunto, setFiltroAssunto] = useState('Todos');
   const [filtroTipoDoc, setFiltroTipoDoc] = useState('Todos');
+  const [filtroVisto, setFiltroVisto] = useState('Todos'); // Todos | Não vistos | Vistos
   const [pagina, setPagina] = useState(1);
   const POR_PAGINA = 40;
 
@@ -32,6 +33,8 @@ export default function ProcessoList({ processos, tipo, setProcessoAberto, setVi
     if (filtroTribunal !== 'Todos' && p.tribunal !== filtroTribunal) return false;
     if (filtroAssunto !== 'Todos' && !(p.assuntos || []).includes(filtroAssunto)) return false;
     if (filtroTipoDoc !== 'Todos' && p.tipoDocumento !== filtroTipoDoc) return false;
+    if (filtroVisto === 'Não vistos' && visitados.has(p.id)) return false;
+    if (filtroVisto === 'Vistos' && !visitados.has(p.id)) return false;
     if (filtroParte) {
       const q = filtroParte.toLowerCase();
       const nomeParte = p.parte?.toLowerCase() || '';
@@ -58,7 +61,10 @@ export default function ProcessoList({ processos, tipo, setProcessoAberto, setVi
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 800 }}>{st.icon} {st.label}</div>
-          <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 2 }}>{lista.length} processo(s)</div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 2, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: 'var(--muted)' }}>{lista.length} processo(s)</span>
+            {(() => { const nv = base.filter(p => !visitados.has(p.id)).length; return nv > 0 ? <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: 'rgba(59,130,246,.15)', color: '#93c5fd', border: '1px solid rgba(59,130,246,.3)', fontWeight: 700 }}>● {nv} não {nv === 1 ? 'visto' : 'vistos'}</span> : null; })()}
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-secondary" onClick={onImportDJE} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -104,6 +110,11 @@ export default function ProcessoList({ processos, tipo, setProcessoAberto, setVi
             {tiposDocs.map(t => <option key={t}>{t}</option>)}
           </select>
         )}
+        <select value={filtroVisto} onChange={e => { setFiltroVisto(e.target.value); resetPagina(); }} style={{ width: 140 }}>
+          <option>Todos</option>
+          <option>Não vistos</option>
+          <option>Vistos</option>
+        </select>
       </div>
 
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
@@ -126,7 +137,12 @@ export default function ProcessoList({ processos, tipo, setProcessoAberto, setVi
                     style={{ borderTop: '1px solid var(--border)', cursor: 'pointer', transition: 'background .15s' }}
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
                     onMouseLeave={e => e.currentTarget.style.background = ''}>
-                    <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: 12, color: '#93c5fd', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.numero}</td>
+                    <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: 12, color: '#93c5fd', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {!visitados.has(p.id) && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#3b82f6', flexShrink: 0, display: 'inline-block' }} title="Não visto" />}
+                        {p.numero}
+                      </div>
+                    </td>
                     <td style={{ padding: '11px 14px' }}><Badge label={fs.label || p.fase} color={fs.color} bg={fs.bg} /></td>
                     <td style={{ padding: '11px 14px', fontSize: 13, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.parte}</td>
                     <td style={{ padding: '11px 14px' }}><Badge label={p.tribunal} color="#94a3b8" bg="rgba(148,163,184,.1)" /></td>

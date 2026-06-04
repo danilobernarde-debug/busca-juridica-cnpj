@@ -136,3 +136,20 @@ export async function sb_migrar(processos) {
     await sb_salvar(proc);
   }
 }
+
+export async function sb_carregarVistos(userUuid) {
+  if (!sbClient || !userUuid) return new Set();
+  const { data } = await sbClient
+    .from('jud_processos_vistos')
+    .select('processo_id')
+    .eq('user_uuid', userUuid);
+  return new Set((data || []).map(r => r.processo_id));
+}
+
+export async function sb_marcarVisto(userUuid, processoId) {
+  if (!sbClient || !userUuid || !processoId) return;
+  await sbClient.from('jud_processos_vistos').upsert(
+    { user_uuid: userUuid, processo_id: processoId },
+    { onConflict: 'user_uuid,processo_id' }
+  );
+}
