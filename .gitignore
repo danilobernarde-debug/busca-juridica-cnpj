@@ -7,9 +7,14 @@ desktop.ini
 *.swp
 *.swo
 
-# Node (caso futuramente use)
+# Node
 node_modules/
+dist/
 .env
+.env.local
+.env.*.local
 
 # Configuração local com chave API (nunca commitar)
 config.local.js
+
+.vercel
