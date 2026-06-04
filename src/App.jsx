@@ -201,12 +201,12 @@ export default function App() {
   // Quando está em form/detalhe, esconde as páginas persistentes
   const mobile = useMobile();
   const mostrarPersistente = !adicionando && view !== 'detalhe';
-  const css = (v) => ({ display: mostrarPersistente && view === v ? 'flex' : 'none', flex: 1, flexDirection: 'column', minWidth: 0, overflow: mobile ? 'auto' : 'hidden' });
+  const css = (v) => ({ display: mostrarPersistente && view === v ? 'flex' : 'none', flex: 1, flexDirection: 'column', minWidth: 0, overflow: 'auto' });
 
   return (
     <>
       <Sidebar view={adicionando ? '' : view} setView={(v) => { setView(v); setAdicionando(null); setProcessoAberto(null); }} counts={counts} user={user} onLogout={logout} isSuperAdmin={isSuperAdmin} />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, paddingTop: mobile ? 52 : 0 }}>
         {erroSB && (
           <div style={{ background: 'rgba(239,68,68,.08)', borderBottom: '1px solid rgba(239,68,68,.2)', padding: '8px 20px', fontSize: 12, color: 'var(--red)', display: 'flex', gap: 10, alignItems: 'center' }}>
             ⚠️ Supabase offline — usando dados locais. {erroSB}

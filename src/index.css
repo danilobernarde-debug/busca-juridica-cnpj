@@ -35,8 +35,6 @@ label { font-size: 12px; color: var(--muted); margin-bottom: 4px; display: block
 .field { display: flex; flex-direction: column; gap: 4px; }
 
 @media (max-width: 767px) {
-  body { height: auto; overflow: auto; }
-  #root { flex-direction: column; height: auto; min-height: 100vh; overflow: auto; }
   input, textarea, select { font-size: 16px; } /* evita zoom automático no iOS */
   button { min-height: 40px; }
   .field { gap: 6px; }

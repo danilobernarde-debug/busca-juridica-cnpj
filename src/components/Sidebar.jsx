@@ -66,11 +66,10 @@ export default function Sidebar({ view, setView, counts, user, onLogout, isSuper
   if (mobile) {
     return (
       <>
-        {/* Botão hamburger */}
+        {/* Header fixo com hamburger */}
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 200, background: '#131f35', borderBottom: '1px solid var(--border)', height: 52, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12 }}>
           <button onClick={() => setAberta(true)} style={{ background: 'transparent', color: 'var(--text)', fontSize: 22, padding: '4px 8px', lineHeight: 1 }}>☰</button>
           <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>⚖️ DB Machado</div>
-          {itens.map(n => n.id === view && n.count > 0 ? null : null)}
           <div style={{ marginLeft: 'auto', fontSize: 13, color: '#93c5fd', fontWeight: 600 }}>
             {itens.find(n => n.id === view)?.icon} {itens.find(n => n.id === view)?.label}
           </div>
@@ -82,9 +81,6 @@ export default function Sidebar({ view, setView, counts, user, onLogout, isSuper
         )}
 
         {sidebar}
-
-        {/* Spacer para compensar o header fixo */}
-        <div style={{ height: 52, flexShrink: 0 }} />
       </>
     );
   }
