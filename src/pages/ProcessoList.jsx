@@ -1,25 +1,30 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { fmtData, useMobile } from '../lib/utils.js';
 import { FASE_STYLE, TIPO_STYLE } from '../constants/styles.js';
 import Badge from '../components/Badge.jsx';
+import FiltrosAvancados, { filtrarArray, CAMPOS_PADRAO } from '../components/FiltrosAvancados/index.jsx';
 
-export default function ProcessoList({ processos, tipo, setProcessoAberto, setView, onAdd, onImportDJE, onImportTexto, visitados = new Set() }) {
+export default function ProcessoList({ processos, tipo, setProcessoAberto, setView, onAdd, onImportDJE, onImportTexto, visitados = new Set(), onMarcarTudoVisto }) {
   const mobile = useMobile();
+
+  // ─── FILTROS SIMPLES (locais) ────────────────────────────────────────────────
   const [busca, setBusca] = useState('');
   const [filtroFase, setFiltroFase] = useState('Todos');
-  const [filtroTribunal, setFiltroTribunal] = useState('Todos');
   const [filtroRamo, setFiltroRamo] = useState('Todos');
   const [filtroParte, setFiltroParte] = useState('');
-  const [filtroAssunto, setFiltroAssunto] = useState('Todos');
-  const [filtroTipoDoc, setFiltroTipoDoc] = useState('Todos');
-  const [filtroVisto, setFiltroVisto] = useState('Todos'); // Todos | Não vistos | Vistos
+  const [filtroVisto, setFiltroVisto] = useState('Todos');
   const [pagina, setPagina] = useState(1);
   const POR_PAGINA = 40;
+
+  // ─── FILTROS AVANÇADOS (Supabase) ────────────────────────────────────────────
+  const [showFiltrosAvancados, setShowFiltrosAvancados] = useState(false);
+  const [resultadoAvancado, setResultadoAvancado] = useState(null);
 
   const resetPagina = () => setPagina(1);
 
   const isTRT = (trib) => (trib || '').toUpperCase().startsWith('TRT');
 
+  // ─── FILTRO BASE POR TIPO ────────────────────────────────────────────────────
   const base = processos.filter(p => {
     if (p.tipo !== tipo) return false;
     if (tipo === 'juridico') {
@@ -29,45 +34,85 @@ export default function ProcessoList({ processos, tipo, setProcessoAberto, setVi
     return true;
   });
 
-  const lista = base.filter(p => {
-    if (filtroFase !== 'Todos' && p.fase !== filtroFase) return false;
-    if (filtroTribunal !== 'Todos' && p.tribunal !== filtroTribunal) return false;
-    if (filtroAssunto !== 'Todos' && !(p.assuntos || []).includes(filtroAssunto)) return false;
-    if (filtroTipoDoc !== 'Todos' && p.tipoDocumento !== filtroTipoDoc) return false;
-    if (filtroVisto === 'Não vistos' && visitados.has(p.id)) return false;
-    if (filtroVisto === 'Vistos' && !visitados.has(p.id)) return false;
-    if (filtroParte) {
-      const q = filtroParte.toLowerCase();
-      const nomeParte = p.parte?.toLowerCase() || '';
-      const nomePartes = (p.partes || []).map(pt => pt.nome.toLowerCase()).join(' ');
-      if (!nomeParte.includes(q) && !nomePartes.includes(q)) return false;
-    }
-    if (busca) {
-      const q = busca.toLowerCase();
-      return p.numero.toLowerCase().includes(q) || p.parte.toLowerCase().includes(q) || (p.tribunal || '').toLowerCase().includes(q);
-    }
-    return true;
-  });
+  // ─── LISTA FINAL ─────────────────────────────────────────────────────────────
+  // Quando filtros avançados ativos, usa resultadoAvancado; senão, filtra localmente.
+  const lista = resultadoAvancado !== null
+    ? resultadoAvancado
+    : base.filter(p => {
+        if (filtroFase !== 'Todos' && p.fase !== filtroFase) return false;
+        if (filtroVisto === 'Não vistos' && visitados.has(p.id)) return false;
+        if (filtroVisto === 'Vistos' && !visitados.has(p.id)) return false;
+        if (filtroParte) {
+          const q = filtroParte.toLowerCase();
+          const nomeParte = p.parte?.toLowerCase() || '';
+          const nomePartes = (p.partes || []).map(pt => pt.nome.toLowerCase()).join(' ');
+          if (!nomeParte.includes(q) && !nomePartes.includes(q)) return false;
+        }
+        if (busca) {
+          const q = busca.toLowerCase();
+          return p.numero.toLowerCase().includes(q) || p.parte.toLowerCase().includes(q) || (p.tribunal || '').toLowerCase().includes(q);
+        }
+        return true;
+      });
 
-  const tribunais   = ['Todos', ...new Set(base.map(p => p.tribunal))];
-  const assuntos    = ['Todos', ...new Set(base.flatMap(p => p.assuntos || []))];
-  const tiposDocs   = ['Todos', ...new Set(base.map(p => p.tipoDocumento).filter(Boolean))];
   const totalPaginas = Math.ceil(lista.length / POR_PAGINA);
-  const listaPagina = lista.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
-
+  const listaPagina  = lista.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
   const st = TIPO_STYLE[tipo];
 
+  // ─── HANDLER PESQUISA AVANÇADA ───────────────────────────────────────────────
+  const handlePesquisarAvancado = useCallback((filtros) => {
+    setResultadoAvancado(filtrarArray(base, filtros, CAMPOS_PADRAO));
+    resetPagina();
+  }, [base]);
+
+  const handleLimparAvancado = useCallback(() => {
+    setResultadoAvancado(null);
+    resetPagina();
+  }, []);
+
+  // ─── RENDER ──────────────────────────────────────────────────────────────────
   return (
     <div style={{ flex: 1, overflow: 'auto', padding: 28 }}>
+
+      {/* Cabeçalho */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 800 }}>{st.icon} {st.label}</div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 2, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 13, color: 'var(--muted)' }}>{lista.length} processo(s)</span>
-            {(() => { const nv = base.filter(p => !visitados.has(p.id)).length; return nv > 0 ? <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: 'rgba(59,130,246,.15)', color: '#93c5fd', border: '1px solid rgba(59,130,246,.3)', fontWeight: 700 }}>● {nv} não {nv === 1 ? 'visto' : 'vistos'}</span> : null; })()}
+            {resultadoAvancado !== null && (
+              <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: 'rgba(139,92,246,.15)', color: '#a78bfa', border: '1px solid rgba(139,92,246,.3)', fontWeight: 700 }}>
+                🔍 resultado filtrado
+              </span>
+            )}
+            {(() => {
+              const nv = base.filter(p => !visitados.has(p.id)).length;
+              if (!nv) return null;
+              return (
+                <>
+                  <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 99, background: 'rgba(59,130,246,.15)', color: '#93c5fd', border: '1px solid rgba(59,130,246,.3)', fontWeight: 700 }}>● {nv} não {nv === 1 ? 'visto' : 'vistos'}</span>
+                  {onMarcarTudoVisto && (
+                    <button
+                      className="btn-ghost"
+                      onClick={() => onMarcarTudoVisto(base.map(p => p.id))}
+                      style={{ fontSize: 11, padding: '2px 8px', color: 'var(--muted)' }}
+                    >
+                      ✓ Marcar tudo como lido
+                    </button>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button
+            className={showFiltrosAvancados ? 'btn-primary' : 'btn-secondary'}
+            onClick={() => setShowFiltrosAvancados(v => !v)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            🔍 Filtros avançados
+          </button>
           <button className="btn-secondary" onClick={onImportDJE} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             📄 Importar Notificação
           </button>
@@ -80,10 +125,11 @@ export default function ProcessoList({ processos, tipo, setProcessoAberto, setVi
         </div>
       </div>
 
+      {/* Filtros simples */}
       {tipo === 'juridico' && (
         <div style={{ display: 'flex', gap: 4, marginBottom: 14 }}>
           {['Todos', 'Cível', 'Trabalhista'].map(r => (
-            <button key={r} onClick={() => { setFiltroRamo(r); setFiltroTribunal('Todos'); resetPagina(); }}
+            <button key={r} onClick={() => { setFiltroRamo(r); resetPagina(); }}
               style={{ padding: '7px 18px', borderRadius: 8, border: filtroRamo === r ? '1px solid var(--blue)' : '1px solid var(--border)', background: filtroRamo === r ? 'rgba(59,130,246,.15)' : 'var(--surface)', color: filtroRamo === r ? '#93c5fd' : 'var(--muted)', fontSize: 13, fontWeight: filtroRamo === r ? 700 : 400, cursor: 'pointer' }}>
               {r === 'Cível' ? '🏛 Cível' : r === 'Trabalhista' ? '👷 Trabalhista' : '📋 Todos'}
             </button>
@@ -91,7 +137,7 @@ export default function ProcessoList({ processos, tipo, setProcessoAberto, setVi
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
         <input value={busca} onChange={e => { setBusca(e.target.value); resetPagina(); }} placeholder="Buscar por número ou parte..." style={{ width: 240 }} />
         <input value={filtroParte} onChange={e => { setFiltroParte(e.target.value); resetPagina(); }} placeholder="Filtrar por parte..." style={{ width: 200 }} />
         <select value={filtroFase} onChange={e => { setFiltroFase(e.target.value); resetPagina(); }} style={{ width: 150 }}>
@@ -100,23 +146,23 @@ export default function ProcessoList({ processos, tipo, setProcessoAberto, setVi
           <option>Execução</option>
           <option>Arquivado</option>
         </select>
-        <select value={filtroTribunal} onChange={e => { setFiltroTribunal(e.target.value); resetPagina(); }} style={{ width: 130 }}>
-          {tribunais.map(t => <option key={t}>{t}</option>)}
-        </select>
-        <select value={filtroAssunto} onChange={e => { setFiltroAssunto(e.target.value); resetPagina(); }} style={{ width: 200 }}>
-          {assuntos.map(a => <option key={a}>{a}</option>)}
-        </select>
-        {tiposDocs.length > 1 && (
-          <select value={filtroTipoDoc} onChange={e => { setFiltroTipoDoc(e.target.value); resetPagina(); }} style={{ width: 140 }}>
-            {tiposDocs.map(t => <option key={t}>{t}</option>)}
-          </select>
-        )}
         <select value={filtroVisto} onChange={e => { setFiltroVisto(e.target.value); resetPagina(); }} style={{ width: 140 }}>
           <option>Todos</option>
           <option>Não vistos</option>
           <option>Vistos</option>
         </select>
       </div>
+
+      {/* Filtros avançados — colapsável, abaixo dos filtros simples */}
+      {showFiltrosAvancados && (
+        <div style={{ marginBottom: 16 }}>
+          <FiltrosAvancados
+            onPesquisar={handlePesquisarAvancado}
+            onLimpar={handleLimparAvancado}
+            onFechar={() => setShowFiltrosAvancados(false)}
+          />
+        </div>
+      )}
 
       {/* ── MOBILE: cards ── */}
       {mobile ? (

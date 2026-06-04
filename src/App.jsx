@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useMobile } from './lib/utils.js';
-import { sbClient, sb_carregar, sb_salvar, sb_deletar, sb_migrar, sb_carregarVistos, sb_marcarVisto } from './lib/supabase.js';
+import { sbClient, sb_carregar, sb_salvar, sb_deletar, sb_migrar, sb_carregarVistos, sb_marcarVisto, sb_marcarTodosVistos } from './lib/supabase.js';
 import { loadData, saveData } from './lib/storage.js';
 import Sidebar from './components/Sidebar.jsx';
 import ProcessoForm from './components/ProcessoForm.jsx';
@@ -16,9 +17,41 @@ import AcessoLog from './pages/AcessoLog.jsx';
 import { registrarAcesso } from './lib/accessLog.js';
 import ProcessoDetalhe from './pages/ProcessoDetalhe/index.jsx';
 
+// ─── WRAPPERS DE ROTA ─────────────────────────────────────────────────────────
+
+function ProcessoDetalhePorId({ processos, carregando, onUpdate, onDelete, user }) {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  if (carregando) return null;
+  const processo = processos.find(p => String(p.id) === id);
+  if (!processo) return <Navigate to="/" replace />;
+  return (
+    <ProcessoDetalhe
+      processo={processo}
+      onUpdate={onUpdate}
+      onDelete={onDelete}
+      onBack={() => navigate(processo.tipo === 'juridico' ? '/juridico' : '/adm')}
+      user={user}
+    />
+  );
+}
+
+function NovoProcesso({ onSave }) {
+  const { tipo } = useParams();
+  const navigate = useNavigate();
+  return (
+    <ProcessoForm
+      onSave={onSave}
+      onCancel={() => navigate(tipo === 'adm' ? '/adm' : '/juridico')}
+      processo={null}
+    />
+  );
+}
+
 // ─── APP PRINCIPAL ────────────────────────────────────────────────────────────
 export default function App() {
   const mobile = useMobile();
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [processos, setProcessos] = useState([]);
@@ -26,10 +59,8 @@ export default function App() {
   const [carregando, setCarregando] = useState(true);
   const jaCarregouRef = useRef(false);
   const [erroSB, setErroSB] = useState(null);
-  const [view, setView] = useState('dashboard');
-  const [processoAberto, setProcessoAberto] = useState(null);
-  const [adicionando, setAdicionando] = useState(null);
   const [showDJE, setShowDJE] = useState(false);
+  const [showTexto, setShowTexto] = useState(false);
   const [visitados, setVisitados] = useState(new Set());
 
   const marcarVisitado = (id) => {
@@ -37,11 +68,29 @@ export default function App() {
     setVisitados(prev => { const n = new Set(prev); n.add(id); return n; });
     if (user) sb_marcarVisto(user.id, id);
   };
-  const [showTexto, setShowTexto] = useState(false);
+
+  const marcarTudoVisto = useCallback(async (ids) => {
+    const novos = ids.filter(id => !visitados.has(id));
+    if (!novos.length) return;
+    setVisitados(prev => { const n = new Set(prev); novos.forEach(id => n.add(id)); return n; });
+    if (user) await sb_marcarTodosVistos(user.id, novos);
+  }, [visitados, user]);
+
+  // Navega para o detalhe do processo e marca como visitado
+  const abrirProcesso = useCallback((p) => {
+    marcarVisitado(p.id);
+    navigate(`/processo/${p.id}`);
+  }, [visitados, user, navigate]);
+
+  // Compatibilidade: filhos que ainda chamam setView('juridico') etc.
+  const legacySetView = useCallback((v) => {
+    const paths = { dashboard: '/', juridico: '/juridico', adm: '/adm', agenda: '/agenda' };
+    if (v in paths) navigate(paths[v]);
+    // 'detalhe' ignorado — abrirProcesso já navega
+  }, [navigate]);
 
   useEffect(() => {
     if (!sbClient) {
-      // Sem Supabase: carrega localStorage direto
       const local = loadData();
       setProcessos(local.processos || []);
       setConfig(local.config || { claudeKey: import.meta.env.VITE_CLAUDE_KEY || '' });
@@ -55,7 +104,6 @@ export default function App() {
       return data?.nome || '';
     };
 
-    // Verifica sessão existente
     sbClient.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
@@ -66,7 +114,6 @@ export default function App() {
       }
     });
 
-    // Escuta mudanças de auth
     const { data: { subscription } } = sbClient.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
         setUser(session.user);
@@ -77,7 +124,7 @@ export default function App() {
         setUser(null);
         setIsSuperAdmin(false);
         setProcessos([]);
-        setView('dashboard');
+        navigate('/');
       }
     });
 
@@ -97,7 +144,6 @@ export default function App() {
     } finally {
       if (!silencioso) setCarregando(false);
     }
-    // Carrega vistos separadamente — não bloqueia o login se a tabela não existir
     if (userId) {
       sb_carregarVistos(userId).then(setVisitados).catch(() => {});
     }
@@ -121,13 +167,11 @@ export default function App() {
 
   const updateProcesso = useCallback(async (proc) => {
     setProcessos(prev => prev.map(p => p.id === proc.id ? proc : p));
-    if (processoAberto?.id === proc.id) setProcessoAberto(proc);
     if (sbClient) await salvarSB(proc);
     else saveData({ processos: processos.map(p => p.id === proc.id ? proc : p), config });
-  }, [processos, processoAberto, config]);
+  }, [processos, config]);
 
   const addProcesso = useCallback(async (proc) => {
-    // Verifica se já existe processo com o mesmo número (ignora pontuação)
     const normalizar = (n) => (n || '').replace(/[\s.\-\/]/g, '');
     const duplicado = proc.numero && processos.find(p =>
       p.id !== proc.id && normalizar(p.numero) === normalizar(proc.numero)
@@ -138,32 +182,26 @@ export default function App() {
         `O processo ${proc.numero} já está cadastrado.\n\nDeseja substituir os dados existentes?`
       );
       if (!confirmar) return false;
-      // Atualiza o processo existente preservando o id original
       const atualizado = { ...duplicado, ...proc, id: duplicado.id, createdAt: duplicado.createdAt };
       setProcessos(prev => prev.map(p => p.id === duplicado.id ? atualizado : p));
       if (sbClient) await salvarSB(atualizado);
       else saveData({ processos: processos.map(p => p.id === duplicado.id ? atualizado : p), config });
-      setAdicionando(null);
-      setProcessoAberto(atualizado);
-      setView('detalhe');
+      navigate(`/processo/${duplicado.id}`);
       return;
     }
 
     const saved = sbClient ? (await salvarSB(proc) || proc) : proc;
     if (!sbClient) saveData({ processos: [proc, ...processos], config });
     setProcessos(prev => [saved, ...prev.filter(p => p.id !== saved.id)]);
-    setAdicionando(null);
-    setProcessoAberto(saved);
-    setView('detalhe');
-  }, [processos, config]);
+    navigate(`/processo/${saved.id}`);
+  }, [processos, config, navigate]);
 
   const delProcesso = useCallback(async (id) => {
     if (sbClient) { try { await sb_deletar(id); } catch (e) { setErroSB('Erro ao deletar: ' + e.message); } }
     else saveData({ processos: processos.filter(p => p.id !== id), config });
     setProcessos(prev => prev.filter(p => p.id !== id));
-    setProcessoAberto(null);
-    setView('dashboard');
-  }, [processos, config]);
+    navigate('/');
+  }, [processos, config, navigate]);
 
   const saveConfig = useCallback((cfg) => {
     setConfig(cfg);
@@ -189,7 +227,6 @@ export default function App() {
     agenda: processos.flatMap(p => (p.audiencias || []).filter(a => a.data >= new Date().toISOString().slice(0, 10))).length,
   };
 
-  // Sem sessão → mostra login
   if (sbClient && !user && !carregando) return <Login />;
 
   if (carregando) return (
@@ -199,13 +236,9 @@ export default function App() {
     </div>
   );
 
-  // Quando está em form/detalhe, esconde as páginas persistentes
-  const mostrarPersistente = !adicionando && view !== 'detalhe';
-  const css = (v) => ({ display: mostrarPersistente && view === v ? 'flex' : 'none', flex: 1, flexDirection: 'column', minWidth: 0, overflow: 'auto' });
-
   return (
     <>
-      <Sidebar view={adicionando ? '' : view} setView={(v) => { setView(v); setAdicionando(null); setProcessoAberto(null); }} counts={counts} user={user} onLogout={logout} isSuperAdmin={isSuperAdmin} />
+      <Sidebar counts={counts} user={user} onLogout={logout} isSuperAdmin={isSuperAdmin} />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, paddingTop: mobile ? 52 : 0 }}>
         {erroSB && (
           <div style={{ background: 'rgba(239,68,68,.08)', borderBottom: '1px solid rgba(239,68,68,.2)', padding: '8px 20px', fontSize: 12, color: 'var(--red)', display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -214,29 +247,44 @@ export default function App() {
           </div>
         )}
 
-        {/* Form e detalhe — montados sob demanda */}
-        {adicionando && <ProcessoForm onSave={addProcesso} onCancel={() => setAdicionando(null)} processo={null} />}
-        {!adicionando && view === 'detalhe' && processoAberto && (
-          <ProcessoDetalhe processo={processoAberto} onUpdate={updateProcesso} onDelete={delProcesso} onBack={() => { setView(processoAberto.tipo === 'juridico' ? 'juridico' : 'adm'); setProcessoAberto(null); }} user={user} />
-        )}
-
-        {/* Páginas principais — sempre montadas, escondidas via CSS para preservar estado */}
-        <div style={css('dashboard')}><Dashboard processos={processos} setView={setView} setProcessoAberto={(p) => { marcarVisitado(p.id); setProcessoAberto(p); }} /></div>
-        <div style={css('juridico')}><ProcessoList processos={processos} tipo="juridico" visitados={visitados} setProcessoAberto={(p) => { marcarVisitado(p.id); setProcessoAberto(p); }} setView={setView} onAdd={() => setAdicionando('juridico')} onImportDJE={() => setShowDJE(true)} onImportTexto={() => setShowTexto(true)} /></div>
-        <div style={css('adm')}><ProcessoList processos={processos} tipo="administrativo" visitados={visitados} setProcessoAberto={(p) => { marcarVisitado(p.id); setProcessoAberto(p); }} setView={setView} onAdd={() => setAdicionando('administrativo')} onImportDJE={() => setShowDJE(true)} onImportTexto={() => setShowTexto(true)} /></div>
-        <div style={css('agenda')}><Agenda processos={processos} setProcessoAberto={(p) => { marcarVisitado(p.id); setProcessoAberto(p); }} setView={setView} /></div>
-
-        {/* Páginas admin — montadas sob demanda */}
-        {mostrarPersistente && view === 'usuarios' && (isSuperAdmin
-          ? <Usuarios sbClient={sbClient} userAtual={user} />
-          : <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, color: 'var(--muted)' }}>
-              <div style={{ fontSize: 40 }}>🔒</div>
-              <div style={{ fontSize: 15, fontWeight: 600 }}>Acesso restrito a Super Admins</div>
-            </div>
-        )}
-        {mostrarPersistente && view === 'config' && <Configuracoes config={config} onSave={saveConfig} onMigrar={migrarLocalParaSB} supabaseOk={!!sbClient && !erroSB} erroSB={erroSB} />}
-        {mostrarPersistente && view === 'acessos' && user?.email === 'danilo@dbmachado.com' && <AcessoLog sbClient={sbClient} user={user} />}
+        <Routes>
+          <Route path="/" element={
+            <Dashboard processos={processos} setView={legacySetView} setProcessoAberto={abrirProcesso} />
+          } />
+          <Route path="/juridico" element={
+            <ProcessoList processos={processos} tipo="juridico" visitados={visitados}
+              setProcessoAberto={abrirProcesso} setView={legacySetView}
+              onAdd={() => navigate('/novo/juridico')}
+              onImportDJE={() => setShowDJE(true)} onImportTexto={() => setShowTexto(true)}
+              onMarcarTudoVisto={marcarTudoVisto} />
+          } />
+          <Route path="/adm" element={
+            <ProcessoList processos={processos} tipo="administrativo" visitados={visitados}
+              setProcessoAberto={abrirProcesso} setView={legacySetView}
+              onAdd={() => navigate('/novo/adm')}
+              onImportDJE={() => setShowDJE(true)} onImportTexto={() => setShowTexto(true)}
+              onMarcarTudoVisto={marcarTudoVisto} />
+          } />
+          <Route path="/agenda" element={
+            <Agenda processos={processos} setProcessoAberto={abrirProcesso} setView={legacySetView} />
+          } />
+          <Route path="/processo/:id" element={
+            <ProcessoDetalhePorId processos={processos} carregando={carregando} onUpdate={updateProcesso} onDelete={delProcesso} user={user} />
+          } />
+          <Route path="/novo/:tipo" element={<NovoProcesso onSave={addProcesso} />} />
+          <Route path="/usuarios" element={
+            isSuperAdmin ? <Usuarios sbClient={sbClient} userAtual={user} /> : <Navigate to="/" replace />
+          } />
+          <Route path="/config" element={
+            <Configuracoes config={config} onSave={saveConfig} onMigrar={migrarLocalParaSB} supabaseOk={!!sbClient && !erroSB} erroSB={erroSB} />
+          } />
+          <Route path="/acessos" element={
+            user?.email === 'danilo@dbmachado.com' ? <AcessoLog sbClient={sbClient} user={user} /> : <Navigate to="/" replace />
+          } />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </div>
+
       {showTexto && (
         <ModalTexto
           processos={processos}
@@ -259,7 +307,7 @@ export default function App() {
           }}
           onConcluido={(ultimo) => {
             setShowDJE(false);
-            if (ultimo) { setProcessoAberto(ultimo); setView('detalhe'); }
+            if (ultimo) navigate(`/processo/${ultimo.id}`);
           }}
         />
       )}

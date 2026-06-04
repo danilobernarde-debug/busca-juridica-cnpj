@@ -153,3 +153,9 @@ export async function sb_marcarVisto(userUuid, processoId) {
     { onConflict: 'user_uuid,processo_id' }
   );
 }
+
+export async function sb_marcarTodosVistos(userUuid, processoIds) {
+  if (!sbClient || !userUuid || !processoIds?.length) return;
+  const rows = processoIds.map(id => ({ user_uuid: userUuid, processo_id: id }));
+  await sbClient.from('jud_processos_vistos').upsert(rows, { onConflict: 'user_uuid,processo_id' });
+}

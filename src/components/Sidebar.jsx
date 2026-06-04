@@ -1,16 +1,32 @@
 import { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useMobile } from '../lib/utils.js';
 import { NAV } from '../constants/styles.js';
 
-export default function Sidebar({ view, setView, counts, user, onLogout, isSuperAdmin }) {
+const NAV_PATHS = {
+  dashboard: '/',
+  juridico: '/juridico',
+  adm: '/adm',
+  agenda: '/agenda',
+  usuarios: '/usuarios',
+  config: '/config',
+  acessos: '/acessos',
+};
+
+export default function Sidebar({ counts, user, onLogout, isSuperAdmin }) {
   const isOwner = user?.email === 'danilo@dbmachado.com';
   const email = user?.email || '';
   const nome = email.split('@')[0];
   const mobile = useMobile();
   const [aberta, setAberta] = useState(false);
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+
+  const currentView = pathname === '/' ? 'dashboard'
+    : Object.entries(NAV_PATHS).find(([, path]) => path !== '/' && pathname.startsWith(path))?.[0] || '';
 
   const navegar = (id) => {
-    setView(id);
+    navigate(NAV_PATHS[id] || '/');
     if (mobile) setAberta(false);
   };
 
@@ -40,7 +56,7 @@ export default function Sidebar({ view, setView, counts, user, onLogout, isSuper
 
       <nav style={{ flex: 1, minHeight: 0, padding: '8px', display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
         {itens.map(n => {
-          const active = view === n.id;
+          const active = currentView === n.id;
           const count = counts[n.id];
           return (
             <button key={n.id} onClick={() => navegar(n.id)}
@@ -66,16 +82,14 @@ export default function Sidebar({ view, setView, counts, user, onLogout, isSuper
   if (mobile) {
     return (
       <>
-        {/* Header fixo com hamburger */}
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 200, background: '#131f35', borderBottom: '1px solid var(--border)', height: 52, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12 }}>
           <button onClick={() => setAberta(true)} style={{ background: 'transparent', color: 'var(--text)', fontSize: 22, padding: '4px 8px', lineHeight: 1 }}>☰</button>
           <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>⚖️ DB Machado</div>
           <div style={{ marginLeft: 'auto', fontSize: 13, color: '#93c5fd', fontWeight: 600 }}>
-            {itens.find(n => n.id === view)?.icon} {itens.find(n => n.id === view)?.label}
+            {itens.find(n => n.id === currentView)?.icon} {itens.find(n => n.id === currentView)?.label}
           </div>
         </div>
 
-        {/* Overlay */}
         {aberta && (
           <div onClick={() => setAberta(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 299 }} />
         )}
