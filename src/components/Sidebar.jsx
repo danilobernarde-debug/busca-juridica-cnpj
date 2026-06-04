@@ -20,7 +20,7 @@ export default function Sidebar({ view, setView, counts, user, onLogout, isSuper
     <div style={{
       width: 200, background: '#131f35', borderRight: '1px solid var(--border)',
       display: 'flex', flexDirection: 'column', flexShrink: 0,
-      height: '100vh', overflow: 'hidden',
+      height: '100dvh', overflow: 'hidden',
       ...(mobile ? {
         position: 'fixed', left: 0, top: 0, zIndex: 300,
         transform: aberta ? 'translateX(0)' : 'translateX(-100%)',
@@ -53,7 +53,7 @@ export default function Sidebar({ view, setView, counts, user, onLogout, isSuper
         })}
       </nav>
 
-      <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)' }}>
+      <div style={{ padding: '12px 16px', paddingBottom: 'max(12px, env(safe-area-inset-bottom))', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
         <div style={{ fontSize: 12, color: 'var(--text)', fontWeight: 600, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</div>
         <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</div>
         <button onClick={onLogout} style={{ width: '100%', background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.2)', color: 'var(--red)', borderRadius: 6, padding: '8px 0', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>

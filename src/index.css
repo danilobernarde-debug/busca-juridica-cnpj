@@ -39,3 +39,8 @@ label { font-size: 12px; color: var(--muted); margin-bottom: 4px; display: block
   button { min-height: 40px; }
   .field { gap: 6px; }
 }
+
+/* Safe area para iPhone (notch e barra inferior) */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  body { padding-bottom: env(safe-area-inset-bottom); }
+}
