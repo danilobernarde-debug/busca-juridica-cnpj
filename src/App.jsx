@@ -86,12 +86,8 @@ export default function App() {
   const carregarDados = async (silencioso = false, userId = null) => {
     if (!silencioso) setCarregando(true);
     try {
-      const [dados, vistos] = await Promise.all([
-        sb_carregar(),
-        sb_carregarVistos(userId),
-      ]);
+      const dados = await sb_carregar();
       setProcessos(dados);
-      setVisitados(vistos);
       setErroSB(null);
       jaCarregouRef.current = true;
     } catch (e) {
@@ -99,6 +95,10 @@ export default function App() {
       setErroSB(e.message);
     } finally {
       if (!silencioso) setCarregando(false);
+    }
+    // Carrega vistos separadamente — não bloqueia o login se a tabela não existir
+    if (userId) {
+      sb_carregarVistos(userId).then(setVisitados).catch(() => {});
     }
   };
 
