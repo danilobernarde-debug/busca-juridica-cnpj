@@ -137,7 +137,7 @@ export default function App() {
       const confirmar = confirm(
         `O processo ${proc.numero} já está cadastrado.\n\nDeseja substituir os dados existentes?`
       );
-      if (!confirmar) return;
+      if (!confirmar) return false;
       // Atualiza o processo existente preservando o id original
       const atualizado = { ...duplicado, ...proc, id: duplicado.id, createdAt: duplicado.createdAt };
       setProcessos(prev => prev.map(p => p.id === duplicado.id ? atualizado : p));
@@ -243,7 +243,8 @@ export default function App() {
           claudeKey={config.claudeKey}
           onFechar={() => setShowTexto(false)}
           onSalvar={async (proc) => {
-            await addProcesso(proc);
+            const resultado = await addProcesso(proc);
+            return resultado !== false;
           }}
         />
       )}

@@ -41,7 +41,7 @@ export default function ModalTexto({ onSalvar, onFechar, processos, claudeKey })
     }
   };
 
-  const salvar = () => {
+  const salvar = async () => {
     const proc = {
       id: uid(),
       ...form,
@@ -51,8 +51,8 @@ export default function ModalTexto({ onSalvar, onFechar, processos, claudeKey })
       movimentacoes: (form.movimentacoes || []).map(m => ({ id: uid(), ...m })),
       partes: (form.partes || []).map(p => ({ id: uid(), ...p })),
     };
-    onSalvar(proc);
-    setEstado('salvo');
+    const sucesso = await onSalvar(proc);
+    if (sucesso !== false) setEstado('salvo');
   };
 
   const adicionarOutro = () => {
