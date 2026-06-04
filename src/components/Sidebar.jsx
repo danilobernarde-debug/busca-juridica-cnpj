@@ -20,7 +20,7 @@ export default function Sidebar({ view, setView, counts, user, onLogout, isSuper
     <div style={{
       width: 200, background: '#131f35', borderRight: '1px solid var(--border)',
       display: 'flex', flexDirection: 'column', flexShrink: 0,
-      height: '100vh',
+      height: '100vh', overflowY: 'auto',
       ...(mobile ? {
         position: 'fixed', left: 0, top: 0, zIndex: 300,
         transform: aberta ? 'translateX(0)' : 'translateX(-100%)',
@@ -38,7 +38,7 @@ export default function Sidebar({ view, setView, counts, user, onLogout, isSuper
         )}
       </div>
 
-      <nav style={{ flex: 1, padding: '8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <nav style={{ flex: 1, padding: '8px', display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
         {itens.map(n => {
           const active = view === n.id;
           const count = counts[n.id];
