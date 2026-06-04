@@ -11,6 +11,8 @@ import ProcessoList from './pages/ProcessoList.jsx';
 import Agenda from './pages/Agenda.jsx';
 import Configuracoes from './pages/Configuracoes.jsx';
 import Usuarios from './pages/Usuarios.jsx';
+import AcessoLog from './pages/AcessoLog.jsx';
+import { registrarAcesso } from './lib/accessLog.js';
 import ProcessoDetalhe from './pages/ProcessoDetalhe/index.jsx';
 
 // ─── APP PRINCIPAL ────────────────────────────────────────────────────────────
@@ -46,8 +48,9 @@ export default function App() {
     }
 
     const carregarPerfil = async (uid) => {
-      const { data } = await sbClient.from('d_auth_user').select('is_super_admin').eq('uuid', uid).single();
+      const { data } = await sbClient.from('d_auth_user').select('is_super_admin, nome').eq('uuid', uid).single();
       setIsSuperAdmin(data?.is_super_admin || false);
+      return data?.nome || '';
     };
 
     // Verifica sessão existente
@@ -62,11 +65,12 @@ export default function App() {
     });
 
     // Escuta mudanças de auth
-    const { data: { subscription } } = sbClient.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = sbClient.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
         setUser(session.user);
-        carregarPerfil(session.user.id);
+        const nome = await carregarPerfil(session.user.id);
         carregarDados(jaCarregouRef.current, session.user.id);
+        if (!jaCarregouRef.current) registrarAcesso(sbClient, session.user, nome);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setIsSuperAdmin(false);
@@ -229,6 +233,7 @@ export default function App() {
             </div>
         )}
         {mostrarPersistente && view === 'config' && <Configuracoes config={config} onSave={saveConfig} onMigrar={migrarLocalParaSB} supabaseOk={!!sbClient && !erroSB} erroSB={erroSB} />}
+        {mostrarPersistente && view === 'acessos' && user?.email === 'danilo@dbmachado.com' && <AcessoLog sbClient={sbClient} user={user} />}
       </div>
       {showTexto && (
         <ModalTexto

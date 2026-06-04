@@ -1,6 +1,7 @@
 import { NAV } from '../constants/styles.js';
 
 export default function Sidebar({ view, setView, counts, user, onLogout, isSuperAdmin }) {
+  const isOwner = user?.email === 'danilo@dbmachado.com';
   const email = user?.email || '';
   const nome = email.split('@')[0];
 
@@ -11,7 +12,7 @@ export default function Sidebar({ view, setView, counts, user, onLogout, isSuper
         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Sistema Jurídico <span style={{ opacity: .5 }}>v1.1</span></div>
       </div>
       <nav style={{ flex: 1, padding: '8px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {NAV.filter(n => !n.adminOnly || isSuperAdmin).map(n => {
+        {NAV.filter(n => (!n.adminOnly || isSuperAdmin) && (!n.ownerOnly || isOwner)).map(n => {
           const active = view === n.id;
           const count = counts[n.id];
           return (

@@ -18,6 +18,7 @@ export const NAV = [
   { id: 'agenda',    icon: '📅', label: 'Agenda' },
   { id: 'usuarios',  icon: '👥', label: 'Usuários', adminOnly: true },
   { id: 'config',    icon: '⚙️', label: 'Configurações', adminOnly: true },
+  { id: 'acessos',   icon: '🔍', label: 'Acessos', ownerOnly: true },
 ];
 
 export const POLO_LABEL = { ativo: 'Polo Ativo', passivo: 'Polo Passivo', outro: 'Outro' };
