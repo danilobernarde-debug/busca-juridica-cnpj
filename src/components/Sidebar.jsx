@@ -1,37 +1,93 @@
+import { useState } from 'react';
+import { useMobile } from '../lib/utils.js';
 import { NAV } from '../constants/styles.js';
 
 export default function Sidebar({ view, setView, counts, user, onLogout, isSuperAdmin }) {
   const isOwner = user?.email === 'danilo@dbmachado.com';
   const email = user?.email || '';
   const nome = email.split('@')[0];
+  const mobile = useMobile();
+  const [aberta, setAberta] = useState(false);
 
-  return (
-    <div style={{ width: 200, background: '#131f35', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', flexShrink: 0, height: '100vh' }}>
-      <div style={{ padding: '20px 16px 16px', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>⚖️ DB Machado</div>
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Sistema Jurídico <span style={{ opacity: .5 }}>v1.1</span></div>
+  const navegar = (id) => {
+    setView(id);
+    if (mobile) setAberta(false);
+  };
+
+  const itens = NAV.filter(n => (!n.adminOnly || isSuperAdmin) && (!n.ownerOnly || isOwner));
+
+  const sidebar = (
+    <div style={{
+      width: 200, background: '#131f35', borderRight: '1px solid var(--border)',
+      display: 'flex', flexDirection: 'column', flexShrink: 0,
+      height: '100vh',
+      ...(mobile ? {
+        position: 'fixed', left: 0, top: 0, zIndex: 300,
+        transform: aberta ? 'translateX(0)' : 'translateX(-100%)',
+        transition: 'transform .25s ease',
+        boxShadow: aberta ? '4px 0 24px rgba(0,0,0,.5)' : 'none',
+      } : {}),
+    }}>
+      <div style={{ padding: '20px 16px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>⚖️ DB Machado</div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Sistema Jurídico</div>
+        </div>
+        {mobile && (
+          <button onClick={() => setAberta(false)} style={{ background: 'transparent', color: 'var(--muted)', fontSize: 20, padding: '4px 8px' }}>✕</button>
+        )}
       </div>
-      <nav style={{ flex: 1, padding: '8px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {NAV.filter(n => (!n.adminOnly || isSuperAdmin) && (!n.ownerOnly || isOwner)).map(n => {
+
+      <nav style={{ flex: 1, padding: '8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {itens.map(n => {
           const active = view === n.id;
           const count = counts[n.id];
           return (
-            <button key={n.id} onClick={() => setView(n.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', textAlign: 'left', width: '100%', background: active ? 'rgba(59,130,246,.2)' : 'transparent', color: active ? '#93c5fd' : 'var(--muted)', fontWeight: active ? 700 : 400, fontSize: 13, transition: 'all .15s' }}>
-              <span style={{ fontSize: 15 }}>{n.icon}</span>
+            <button key={n.id} onClick={() => navegar(n.id)}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', textAlign: 'left', width: '100%', background: active ? 'rgba(59,130,246,.2)' : 'transparent', color: active ? '#93c5fd' : 'var(--muted)', fontWeight: active ? 700 : 400, fontSize: 14, transition: 'all .15s' }}>
+              <span style={{ fontSize: 16 }}>{n.icon}</span>
               <span style={{ flex: 1 }}>{n.label}</span>
               {count > 0 && <span style={{ fontSize: 10, background: active ? 'var(--blue)' : 'var(--surface2)', color: '#fff', borderRadius: 99, padding: '1px 6px', fontWeight: 700 }}>{count}</span>}
             </button>
           );
         })}
       </nav>
+
       <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)' }}>
         <div style={{ fontSize: 12, color: 'var(--text)', fontWeight: 600, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</div>
         <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</div>
-        <button onClick={onLogout} style={{ width: '100%', background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.2)', color: 'var(--red)', borderRadius: 6, padding: '6px 0', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+        <button onClick={onLogout} style={{ width: '100%', background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.2)', color: 'var(--red)', borderRadius: 6, padding: '8px 0', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
           Sair
         </button>
       </div>
     </div>
   );
+
+  if (mobile) {
+    return (
+      <>
+        {/* Botão hamburger */}
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 200, background: '#131f35', borderBottom: '1px solid var(--border)', height: 52, display: 'flex', alignItems: 'center', padding: '0 16px', gap: 12 }}>
+          <button onClick={() => setAberta(true)} style={{ background: 'transparent', color: 'var(--text)', fontSize: 22, padding: '4px 8px', lineHeight: 1 }}>☰</button>
+          <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>⚖️ DB Machado</div>
+          {itens.map(n => n.id === view && n.count > 0 ? null : null)}
+          <div style={{ marginLeft: 'auto', fontSize: 13, color: '#93c5fd', fontWeight: 600 }}>
+            {itens.find(n => n.id === view)?.icon} {itens.find(n => n.id === view)?.label}
+          </div>
+        </div>
+
+        {/* Overlay */}
+        {aberta && (
+          <div onClick={() => setAberta(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 299 }} />
+        )}
+
+        {sidebar}
+
+        {/* Spacer para compensar o header fixo */}
+        <div style={{ height: 52, flexShrink: 0 }} />
+      </>
+    );
+  }
+
+  return sidebar;
 }

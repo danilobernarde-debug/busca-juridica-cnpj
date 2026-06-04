@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { fmtData } from '../lib/utils.js';
+import { fmtData, useMobile } from '../lib/utils.js';
 import { FASE_STYLE, TIPO_STYLE } from '../constants/styles.js';
 import Badge from '../components/Badge.jsx';
 
 export default function ProcessoList({ processos, tipo, setProcessoAberto, setView, onAdd, onImportDJE, onImportTexto, visitados = new Set() }) {
+  const mobile = useMobile();
   const [busca, setBusca] = useState('');
   const [filtroFase, setFiltroFase] = useState('Todos');
   const [filtroTribunal, setFiltroTribunal] = useState('Todos');
@@ -117,57 +118,88 @@ export default function ProcessoList({ processos, tipo, setProcessoAberto, setVi
         </select>
       </div>
 
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: 'var(--surface2)', fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
-              {['Número', 'Fase', 'Parte contrária', 'Tribunal / Órgão', 'Tramitação', 'Valor', 'Audiências'].map(h =>
-                <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600 }}>{h}</th>
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {listaPagina.length === 0
-              ? <tr><td colSpan={6} style={{ padding: 40, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>Nenhum processo encontrado.</td></tr>
-              : listaPagina.map(p => {
-                const fs = FASE_STYLE[p.fase] || {};
-                const proxAud = (p.audiencias || []).filter(a => a.data >= new Date().toISOString().slice(0, 10)).sort((a, b) => a.data.localeCompare(b.data))[0];
-                return (
-                  <tr key={p.id} onClick={() => { setProcessoAberto(p); setView('detalhe'); }}
-                    style={{ borderTop: '1px solid var(--border)', cursor: 'pointer', transition: 'background .15s' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
-                    onMouseLeave={e => e.currentTarget.style.background = ''}>
-                    <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: 12, color: '#93c5fd', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {!visitados.has(p.id) && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#3b82f6', flexShrink: 0, display: 'inline-block' }} title="Não visto" />}
-                        {p.numero}
-                      </div>
-                    </td>
-                    <td style={{ padding: '11px 14px' }}><Badge label={fs.label || p.fase} color={fs.color} bg={fs.bg} /></td>
-                    <td style={{ padding: '11px 14px', fontSize: 13, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.parte}</td>
-                    <td style={{ padding: '11px 14px' }}><Badge label={p.tribunal} color="#94a3b8" bg="rgba(148,163,184,.1)" /></td>
-                    <td style={{ padding: '11px 14px', fontSize: 12, color: 'var(--muted)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.tramitacao}</td>
-                    <td style={{ padding: '11px 14px', fontSize: 12, whiteSpace: 'nowrap' }}>
-                      {p.valorCausa
-                        ? <span style={{ color: 'var(--green)', fontWeight: 600 }}>
-                            {Number(p.valorCausa).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                          </span>
-                        : <span style={{ color: 'var(--muted)' }}>—</span>
-                      }
-                    </td>
-                    <td style={{ padding: '11px 14px', fontSize: 12 }}>
-                      {proxAud
-                        ? <span style={{ color: 'var(--green)' }}>📅 {fmtData(proxAud.data)}</span>
-                        : <span style={{ color: 'var(--muted)' }}>—</span>
-                      }
-                    </td>
-                  </tr>
-                );
-              })
-            }
-          </tbody>
-        </table>
-      </div>
+      {/* ── MOBILE: cards ── */}
+      {mobile ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {listaPagina.length === 0
+            ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>Nenhum processo encontrado.</div>
+            : listaPagina.map(p => {
+              const fs = FASE_STYLE[p.fase] || {};
+              const proxAud = (p.audiencias || []).filter(a => a.data >= new Date().toISOString().slice(0, 10)).sort((a, b) => a.data.localeCompare(b.data))[0];
+              return (
+                <div key={p.id} onClick={() => { setProcessoAberto(p); setView('detalhe'); }}
+                  style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 14, cursor: 'pointer', borderLeft: `3px solid ${fs.color || 'var(--border)'}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}>
+                      {!visitados.has(p.id) && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#3b82f6', flexShrink: 0 }} />}
+                      <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#93c5fd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.numero}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                      <Badge label={fs.label || p.fase} color={fs.color} bg={fs.bg} />
+                      <Badge label={p.tribunal} color="#94a3b8" bg="rgba(148,163,184,.1)" />
+                    </div>
+                  </div>
+                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{p.parte}</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>{p.tramitacao}</div>
+                  {(proxAud || p.valorCausa) && (
+                    <div style={{ display: 'flex', gap: 12, marginTop: 8, fontSize: 12 }}>
+                      {proxAud && <span style={{ color: 'var(--green)' }}>📅 {fmtData(proxAud.data)}</span>}
+                      {p.valorCausa && <span style={{ color: 'var(--green)', fontWeight: 600 }}>{Number(p.valorCausa).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          }
+        </div>
+      ) : (
+        /* ── DESKTOP: tabela ── */
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'var(--surface2)', fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                {['Número', 'Fase', 'Parte contrária', 'Tribunal / Órgão', 'Tramitação', 'Valor', 'Audiências'].map(h =>
+                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600 }}>{h}</th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {listaPagina.length === 0
+                ? <tr><td colSpan={7} style={{ padding: 40, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>Nenhum processo encontrado.</td></tr>
+                : listaPagina.map(p => {
+                  const fs = FASE_STYLE[p.fase] || {};
+                  const proxAud = (p.audiencias || []).filter(a => a.data >= new Date().toISOString().slice(0, 10)).sort((a, b) => a.data.localeCompare(b.data))[0];
+                  return (
+                    <tr key={p.id} onClick={() => { setProcessoAberto(p); setView('detalhe'); }}
+                      style={{ borderTop: '1px solid var(--border)', cursor: 'pointer', transition: 'background .15s' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
+                      onMouseLeave={e => e.currentTarget.style.background = ''}>
+                      <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: 12, color: '#93c5fd', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {!visitados.has(p.id) && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#3b82f6', flexShrink: 0, display: 'inline-block' }} title="Não visto" />}
+                          {p.numero}
+                        </div>
+                      </td>
+                      <td style={{ padding: '11px 14px' }}><Badge label={fs.label || p.fase} color={fs.color} bg={fs.bg} /></td>
+                      <td style={{ padding: '11px 14px', fontSize: 13, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.parte}</td>
+                      <td style={{ padding: '11px 14px' }}><Badge label={p.tribunal} color="#94a3b8" bg="rgba(148,163,184,.1)" /></td>
+                      <td style={{ padding: '11px 14px', fontSize: 12, color: 'var(--muted)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.tramitacao}</td>
+                      <td style={{ padding: '11px 14px', fontSize: 12, whiteSpace: 'nowrap' }}>
+                        {p.valorCausa
+                          ? <span style={{ color: 'var(--green)', fontWeight: 600 }}>{Number(p.valorCausa).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                          : <span style={{ color: 'var(--muted)' }}>—</span>}
+                      </td>
+                      <td style={{ padding: '11px 14px', fontSize: 12 }}>
+                        {proxAud ? <span style={{ color: 'var(--green)' }}>📅 {fmtData(proxAud.data)}</span> : <span style={{ color: 'var(--muted)' }}>—</span>}
+                      </td>
+                    </tr>
+                  );
+                })
+              }
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {totalPaginas > 1 && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 20 }}>

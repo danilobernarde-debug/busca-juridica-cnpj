@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useMobile } from './lib/utils.js';
 import { sbClient, sb_carregar, sb_salvar, sb_deletar, sb_migrar, sb_carregarVistos, sb_marcarVisto } from './lib/supabase.js';
 import { loadData, saveData } from './lib/storage.js';
 import Sidebar from './components/Sidebar.jsx';
@@ -198,8 +199,9 @@ export default function App() {
   );
 
   // Quando está em form/detalhe, esconde as páginas persistentes
+  const mobile = useMobile();
   const mostrarPersistente = !adicionando && view !== 'detalhe';
-  const css = (v) => ({ display: mostrarPersistente && view === v ? 'flex' : 'none', flex: 1, flexDirection: 'column', minWidth: 0, overflow: 'hidden' });
+  const css = (v) => ({ display: mostrarPersistente && view === v ? 'flex' : 'none', flex: 1, flexDirection: 'column', minWidth: 0, overflow: mobile ? 'auto' : 'hidden' });
 
   return (
     <>
