@@ -1,8 +1,22 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { fmtData, useMobile } from '../lib/utils.js';
 import { FASE_STYLE, TIPO_STYLE } from '../constants/styles.js';
 import Badge from '../components/Badge.jsx';
 import FiltrosAvancados, { filtrarArray, CAMPOS_PADRAO } from '../components/FiltrosAvancados/index.jsx';
+
+const COLUNAS = [
+  { id: 'fase',          label: 'Fase',             fixo: true },
+  { id: 'parte',         label: 'Parte contrária',  fixo: true },
+  { id: 'tribunal',      label: 'Tribunal / Órgão', fixo: true },
+  { id: 'tramitacao',    label: 'Tramitação' },
+  { id: 'ajuizamento',   label: 'Ajuizamento' },
+  { id: 'valor',         label: 'Valor' },
+  { id: 'audiencias',    label: 'Audiências' },
+  { id: 'uf',            label: 'UF' },
+  { id: 'instancia',     label: 'Instância' },
+  { id: 'tipoDocumento', label: 'Tipo de doc.' },
+];
+const COLUNAS_PADRAO = new Set(['fase', 'parte', 'tribunal', 'tramitacao', 'valor', 'audiencias']);
 
 export default function ProcessoList({ processos, tipo, setProcessoAberto, setView, onAdd, onImportDJE, onImportTexto, visitados = new Set(), onMarcarTudoVisto }) {
   const mobile = useMobile();
@@ -15,6 +29,22 @@ export default function ProcessoList({ processos, tipo, setProcessoAberto, setVi
   const [filtroVisto, setFiltroVisto] = useState('Todos');
   const [pagina, setPagina] = useState(1);
   const POR_PAGINA = 40;
+
+  // ─── COLUNAS ─────────────────────────────────────────────────────────────────
+  const [colunasVisiveis, setColunasVisiveis] = useState(COLUNAS_PADRAO);
+  const [showColunas, setShowColunas] = useState(false);
+  const toggleColuna = (id) => setColunasVisiveis(prev => {
+    const s = new Set(prev);
+    s.has(id) ? s.delete(id) : s.add(id);
+    return s;
+  });
+  const col = (id) => colunasVisiveis.has(id);
+  useEffect(() => {
+    if (!showColunas) return;
+    const fechar = () => setShowColunas(false);
+    document.addEventListener('click', fechar);
+    return () => document.removeEventListener('click', fechar);
+  }, [showColunas]);
 
   // ─── FILTROS AVANÇADOS (Supabase) ────────────────────────────────────────────
   const [showFiltrosAvancados, setShowFiltrosAvancados] = useState(false);
@@ -200,50 +230,82 @@ export default function ProcessoList({ processos, tipo, setProcessoAberto, setVi
         </div>
       ) : (
         /* ── DESKTOP: tabela ── */
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'var(--surface2)', fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                {['Número', 'Fase', 'Parte contrária', 'Tribunal / Órgão', 'Tramitação', 'Valor', 'Audiências'].map(h =>
-                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600 }}>{h}</th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {listaPagina.length === 0
-                ? <tr><td colSpan={7} style={{ padding: 40, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>Nenhum processo encontrado.</td></tr>
-                : listaPagina.map(p => {
-                  const fs = FASE_STYLE[p.fase] || {};
-                  const proxAud = (p.audiencias || []).filter(a => a.data >= new Date().toISOString().slice(0, 10)).sort((a, b) => a.data.localeCompare(b.data))[0];
-                  return (
-                    <tr key={p.id} onClick={() => { setProcessoAberto(p); setView('detalhe'); }}
-                      style={{ borderTop: '1px solid var(--border)', cursor: 'pointer', transition: 'background .15s' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
-                      onMouseLeave={e => e.currentTarget.style.background = ''}>
-                      <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: 12, color: '#93c5fd', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {!visitados.has(p.id) && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#3b82f6', flexShrink: 0, display: 'inline-block' }} title="Não visto" />}
-                          {p.numero}
-                        </div>
-                      </td>
-                      <td style={{ padding: '11px 14px' }}><Badge label={fs.label || p.fase} color={fs.color} bg={fs.bg} /></td>
-                      <td style={{ padding: '11px 14px', fontSize: 13, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.parte}</td>
-                      <td style={{ padding: '11px 14px' }}><Badge label={p.tribunal} color="#94a3b8" bg="rgba(148,163,184,.1)" /></td>
-                      <td style={{ padding: '11px 14px', fontSize: 12, color: 'var(--muted)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.tramitacao}</td>
-                      <td style={{ padding: '11px 14px', fontSize: 12, whiteSpace: 'nowrap' }}>
-                        {p.valorCausa
-                          ? <span style={{ color: 'var(--green)', fontWeight: 600 }}>{Number(p.valorCausa).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
-                          : <span style={{ color: 'var(--muted)' }}>—</span>}
-                      </td>
-                      <td style={{ padding: '11px 14px', fontSize: 12 }}>
-                        {proxAud ? <span style={{ color: 'var(--green)' }}>📅 {fmtData(proxAud.data)}</span> : <span style={{ color: 'var(--muted)' }}>—</span>}
-                      </td>
-                    </tr>
-                  );
-                })
-              }
-            </tbody>
-          </table>
+        <div>
+          {/* Barra acima da tabela com botão de colunas */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6, position: 'relative' }}>
+            <button
+              onClick={e => { e.stopPropagation(); setShowColunas(v => !v); }}
+              title="Adicionar / remover colunas"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid ' + (showColunas ? 'var(--blue)' : 'var(--border)'), background: showColunas ? 'rgba(59,130,246,.15)' : 'var(--surface)', color: showColunas ? '#93c5fd' : 'var(--muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+            >
+              ⊞ Colunas
+            </button>
+            {showColunas && (
+              <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, zIndex: 100, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: 12, minWidth: 190, boxShadow: '0 8px 24px rgba(0,0,0,.4)' }}
+                onClick={e => e.stopPropagation()}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '.06em' }}>Colunas visíveis</div>
+                {COLUNAS.map(c => (
+                  <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px', cursor: c.fixo ? 'default' : 'pointer', fontSize: 13, color: c.fixo ? 'var(--muted)' : 'var(--text)', borderRadius: 6 }}>
+                    <input type="checkbox" checked={col(c.id)} disabled={c.fixo} onChange={() => toggleColuna(c.id)}
+                      style={{ accentColor: 'var(--blue)', width: 14, height: 14 }} />
+                    {c.label}
+                    {c.fixo && <span style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 'auto' }}>fixo</span>}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 600 }}>
+              <thead>
+                <tr style={{ background: 'var(--surface2)', fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                  <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>Número</th>
+                  {col('fase')          && <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>Fase</th>}
+                  {col('parte')         && <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>Parte contrária</th>}
+                  {col('tribunal')      && <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>Tribunal / Órgão</th>}
+                  {col('tramitacao')    && <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>Tramitação</th>}
+                  {col('ajuizamento')   && <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>Ajuizamento</th>}
+                  {col('valor')         && <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>Valor</th>}
+                  {col('audiencias')    && <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>Audiências</th>}
+                  {col('uf')            && <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>UF</th>}
+                  {col('instancia')     && <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>Instância</th>}
+                  {col('tipoDocumento') && <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>Tipo de doc.</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {listaPagina.length === 0
+                  ? <tr><td colSpan={1 + colunasVisiveis.size} style={{ padding: 40, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>Nenhum processo encontrado.</td></tr>
+                  : listaPagina.map(p => {
+                    const fs = FASE_STYLE[p.fase] || {};
+                    const proxAud = (p.audiencias || []).filter(a => a.data >= new Date().toISOString().slice(0, 10)).sort((a, b) => a.data.localeCompare(b.data))[0];
+                    return (
+                      <tr key={p.id} onClick={() => { setProcessoAberto(p); setView('detalhe'); }}
+                        style={{ borderTop: '1px solid var(--border)', cursor: 'pointer', transition: 'background .15s' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
+                        onMouseLeave={e => e.currentTarget.style.background = ''}>
+                        <td style={{ padding: '11px 14px', fontFamily: 'monospace', fontSize: 12, color: '#93c5fd', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {!visitados.has(p.id) && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#3b82f6', flexShrink: 0, display: 'inline-block' }} title="Não visto" />}
+                            {p.numero}
+                          </div>
+                        </td>
+                        {col('fase')          && <td style={{ padding: '11px 14px' }}><Badge label={fs.label || p.fase} color={fs.color} bg={fs.bg} /></td>}
+                        {col('parte')         && <td style={{ padding: '11px 14px', fontSize: 13, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.parte}</td>}
+                        {col('tribunal')      && <td style={{ padding: '11px 14px' }}><Badge label={p.tribunal} color="#94a3b8" bg="rgba(148,163,184,.1)" /></td>}
+                        {col('tramitacao')    && <td style={{ padding: '11px 14px', fontSize: 12, color: 'var(--muted)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.tramitacao}</td>}
+                        {col('ajuizamento')   && <td style={{ padding: '11px 14px', fontSize: 12, whiteSpace: 'nowrap', color: 'var(--muted)' }}>{p.dataAjuizamento ? fmtData(p.dataAjuizamento) : <span>—</span>}</td>}
+                        {col('valor')         && <td style={{ padding: '11px 14px', fontSize: 12, whiteSpace: 'nowrap' }}>{p.valorCausa ? <span style={{ color: 'var(--green)', fontWeight: 600 }}>{Number(p.valorCausa).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span> : <span style={{ color: 'var(--muted)' }}>—</span>}</td>}
+                        {col('audiencias')    && <td style={{ padding: '11px 14px', fontSize: 12 }}>{proxAud ? <span style={{ color: 'var(--green)' }}>📅 {fmtData(proxAud.data)}</span> : <span style={{ color: 'var(--muted)' }}>—</span>}</td>}
+                        {col('uf')            && <td style={{ padding: '11px 14px', fontSize: 12, color: 'var(--muted)' }}>{p.uf || <span>—</span>}</td>}
+                        {col('instancia')     && <td style={{ padding: '11px 14px', fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{p.instancia || <span>—</span>}</td>}
+                        {col('tipoDocumento') && <td style={{ padding: '11px 14px', fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{p.tipoDocumento || <span>—</span>}</td>}
+                      </tr>
+                    );
+                  })
+                }
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
