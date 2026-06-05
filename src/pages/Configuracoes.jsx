@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { STORAGE_KEY } from '../lib/storage.js';
 
 
 function validarFormatoChave(key) {
@@ -29,11 +28,6 @@ export default function Configuracoes({ config, onSave, onMigrar, supabaseOk, er
           <span style={{ fontSize: 16 }}>{supabaseOk ? '🟢' : '🔴'}</span>
           <span style={{ flex: 1 }}>{supabaseOk ? 'Conectado — dados salvando no Supabase' : (erroSB || 'Não configurado — usando localStorage')}</span>
         </div>
-        {supabaseOk && (
-          <button className="btn-secondary" onClick={onMigrar}>
-            ⬆️ Migrar dados locais para o Supabase
-          </button>
-        )}
       </div>
 
       {/* Claude */}
@@ -51,11 +45,15 @@ export default function Configuracoes({ config, onSave, onMigrar, supabaseOk, er
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, marginBottom: statusClaude ? 16 : 0 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: statusClaude ? 16 : 0 }}>
           <button className="btn-primary" onClick={() => onSave({ ...config, claudeKey: key })}>Salvar</button>
           <button className="btn-secondary" onClick={handleVerificar} disabled={!key.trim()}>
             🔍 Verificar formato
           </button>
+          <a href="https://console.anthropic.com/settings/api-keys" target="_blank" rel="noreferrer"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
+            🔑 Gerenciar chaves
+          </a>
         </div>
 
         {/* Resultado */}
@@ -78,16 +76,8 @@ export default function Configuracoes({ config, onSave, onMigrar, supabaseOk, er
                   <span style={{ color: 'var(--muted)' }}>Comprimento</span>
                   <span>{key.trim().length} caracteres</span>
                 </div>
-                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, fontSize: 12, color: 'var(--muted)', lineHeight: 1.6 }}>
-                  ⚠️ A API da Anthropic bloqueia chamadas diretas do browser (CORS). Para ver
-                  saldo de créditos, uso e expiração da chave acesse o{' '}
-                  <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noreferrer" style={{ color: '#93c5fd' }}>
-                    Console → Billing
-                  </a>
-                  {' '}e para uso detalhado de tokens veja{' '}
-                  <a href="https://console.anthropic.com/settings/usage" target="_blank" rel="noreferrer" style={{ color: '#93c5fd' }}>
-                    Console → Usage
-                  </a>.
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, fontSize: 13, color: 'var(--green)', fontWeight: 600 }}>
+                  ✅ IA funcionando — importação de PDFs e extração de texto via Claude estão ativos.
                 </div>
               </div>
             )}
@@ -95,19 +85,6 @@ export default function Configuracoes({ config, onSave, onMigrar, supabaseOk, er
         )}
       </div>
 
-      {/* Backup local */}
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, maxWidth: 600 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>🗂️ Backup local</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn-secondary" onClick={() => {
-            const data = localStorage.getItem(STORAGE_KEY);
-            if (!data) { alert('Nenhum dado local.'); return; }
-            const blob = new Blob([data], { type: 'application/json' });
-            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'backup_juridico.json'; a.click();
-          }}>⬇️ Exportar backup</button>
-          <button className="btn-danger" onClick={() => { if (confirm('Apagar dados locais?')) { localStorage.removeItem(STORAGE_KEY); location.reload(); } }}>🗑️ Apagar local</button>
-        </div>
-      </div>
     </div>
   );
 }

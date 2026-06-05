@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { fmtHora } from '../../lib/utils.js';
 
 export default function TabAudiencias({ audiencias, onAdd, onDel }) {
   const [form, setForm] = useState({ data: '', hora: '', tipo: 'Conciliação', local: '', obs: '' });
@@ -44,7 +45,7 @@ export default function TabAudiencias({ audiencias, onAdd, onDel }) {
               <div style={{ fontSize: 10, color: 'var(--muted)' }}>{['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][parseInt(a.data.slice(5, 7)) - 1] + '/' + a.data.slice(0, 4)}</div>
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>{a.tipo} {a.hora && <span style={{ color: 'var(--blue)', fontWeight: 400 }}>· {a.hora}</span>}</div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>{a.tipo} {a.hora && <span style={{ color: 'var(--blue)', fontWeight: 400 }}>· {fmtHora(a.hora)}</span>}</div>
               {a.local && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>📍 {a.local}</div>}
               {a.obs && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4, fontStyle: 'italic' }}>{a.obs}</div>}
               {passada && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>Realizada</div>}

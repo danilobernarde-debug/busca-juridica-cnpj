@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { fmtDataExtenso } from '../lib/utils.js';
+import { fmtDataExtenso, fmtHora } from '../lib/utils.js';
 import { TIPO_STYLE } from '../constants/styles.js';
 import Badge from '../components/Badge.jsx';
 
@@ -51,7 +51,7 @@ export default function Agenda({ processos, setProcessoAberto, setView }) {
                 style={{ background: 'var(--surface)', border: '1px solid rgba(59,130,246,.3)', borderRadius: 10, padding: '12px 16px', marginBottom: 6, cursor: 'pointer', display: 'flex', gap: 14, alignItems: 'center' }}
                 onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--blue)'}
                 onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(59,130,246,.3)'}>
-                <div style={{ fontWeight: 700, color: 'var(--blue)', minWidth: 50, fontSize: 14 }}>{a.hora || '—'}</div>
+                <div style={{ fontWeight: 700, color: 'var(--blue)', minWidth: 50, fontSize: 14 }}>{fmtHora(a.hora) || '—'}</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: 14 }}>{a.tipo}</div>
                   <div style={{ fontSize: 12, color: 'var(--muted)' }}>{a.processo.parte} · {a.processo.tribunal}</div>

@@ -179,10 +179,57 @@ export default function App() {
 
     if (duplicado) {
       const confirmar = confirm(
-        `O processo ${proc.numero} já está cadastrado.\n\nDeseja substituir os dados existentes?`
+        `O processo ${proc.numero} já está cadastrado.\n\nDeseja atualizar os dados existentes?`
       );
       if (!confirmar) return false;
-      const atualizado = { ...duplicado, ...proc, id: duplicado.id, createdAt: duplicado.createdAt };
+
+      // Partes: mantém todas do antigo, adiciona novas que não existem pelo nome
+      const nomesExistentes = new Set((duplicado.partes || []).map(p => (p.nome || '').toLowerCase()));
+      const partesNovas = (proc.partes || []).filter(p => !nomesExistentes.has((p.nome || '').toLowerCase()));
+      const partesMerged = [...(duplicado.partes || []), ...partesNovas];
+
+      // Movimentações: mantém todas do antigo, adiciona novas que não existem por data+evento
+      const movChave = m => `${m.data}|${(m.evento || '').slice(0, 80)}`;
+      const movExistentes = new Set((duplicado.movimentacoes || []).map(movChave));
+      const movNovas = (proc.movimentacoes || []).filter(m => !movExistentes.has(movChave(m)));
+      const movMerged = [...(duplicado.movimentacoes || []), ...movNovas];
+
+      // Audiências: mantém todas do antigo, adiciona novas que não existem pela data
+      const datasExistentes = new Set((duplicado.audiencias || []).map(a => a.data));
+      const audNovas = (proc.audiencias || []).filter(a => !datasExistentes.has(a.data));
+      const audMerged = [...(duplicado.audiencias || []), ...audNovas];
+
+      // Assuntos: união sem duplicatas
+      const assuntosMerged = [...new Set([...(duplicado.assuntos || []), ...(proc.assuntos || [])])];
+
+      const atualizado = {
+        ...duplicado,
+        // Campos escalares: usa o novo se tiver valor, senão mantém o antigo
+        numero:          proc.numero          || duplicado.numero,
+        tipo:            proc.tipo            || duplicado.tipo,
+        parte:           proc.parte           || duplicado.parte,
+        tribunal:        proc.tribunal        || duplicado.tribunal,
+        tramitacao:      proc.tramitacao      || duplicado.tramitacao,
+        valorCausa:      proc.valorCausa      || duplicado.valorCausa,
+        dataAjuizamento: proc.dataAjuizamento || duplicado.dataAjuizamento,
+        uf:              proc.uf              || duplicado.uf,
+        instancia:       proc.instancia       || duplicado.instancia,
+        tipoDocumento:   proc.tipoDocumento   || duplicado.tipoDocumento,
+        // Arrays mesclados
+        partes:          partesMerged,
+        movimentacoes:   movMerged,
+        audiencias:      audMerged,
+        assuntos:        assuntosMerged,
+        // Sempre preserva do antigo
+        fase:     duplicado.fase,
+        notas:    duplicado.notas    || [],
+        arquivos: duplicado.arquivos || [],
+        // Identidade
+        id:        duplicado.id,
+        createdAt: duplicado.createdAt,
+        updatedAt: new Date().toISOString(),
+      };
+
       setProcessos(prev => prev.map(p => p.id === duplicado.id ? atualizado : p));
       if (sbClient) await salvarSB(atualizado);
       else saveData({ processos: processos.map(p => p.id === duplicado.id ? atualizado : p), config });

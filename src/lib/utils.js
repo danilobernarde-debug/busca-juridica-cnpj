@@ -37,6 +37,20 @@ export function fmtDataHora(s) {
   return new Date(s).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+export function fmtHora(h) {
+  if (!h) return h;
+  const m = h.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+  if (!m) return h;
+  let hh = parseInt(m[1]);
+  const min = m[2];
+  const period = m[4];
+  if (period) {
+    if (period.toUpperCase() === 'PM' && hh < 12) hh += 12;
+    if (period.toUpperCase() === 'AM' && hh === 12) hh = 0;
+  }
+  return `${String(hh).padStart(2, '0')}:${min}`;
+}
+
 export function fmtTamanho(b) {
   if (!b) return '';
   if (b < 1024) return `${b} B`;
