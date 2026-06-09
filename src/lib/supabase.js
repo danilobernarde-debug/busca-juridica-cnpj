@@ -62,6 +62,25 @@ export async function sb_carregar() {
   }));
 }
 
+async function _migrarArquivosParaStorage(processoId, arquivos) {
+  return Promise.all((arquivos || []).map(async (f) => {
+    if (f.url || !f.base64?.startsWith('data:')) return f;
+    try {
+      const [header, data] = f.base64.split(',');
+      const mime = (header.match(/:(.*?);/) || [])[1] || 'application/octet-stream';
+      const bytes = atob(data);
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      const file = new File([arr], f.nome, { type: mime });
+      const uploaded = await sb_uploadArquivo(processoId, file);
+      return { ...f, base64: null, url: uploaded.url };
+    } catch (e) {
+      console.warn('Falha ao migrar arquivo para Storage:', e.message);
+      return f;
+    }
+  }));
+}
+
 export async function sb_salvar(proc) {
   // Verifica sessão ativa
   const { data: { session } } = await sbClient.auth.getSession();
@@ -99,10 +118,11 @@ export async function sb_salvar(proc) {
     if (error) throw error;
   }
 
+  const arquivos = await _migrarArquivosParaStorage(pid, proc.arquivos);
   await sbClient.from('jud_arquivos').delete().eq('processo_id', pid);
-  if (proc.arquivos?.length) {
+  if (arquivos.length) {
     const { error } = await sbClient.from('jud_arquivos').insert(
-      proc.arquivos.map(f => ({ id: f.id, processo_id: pid, nome: f.nome, tipo: f.tipo || '', tamanho: f.tamanho || 0, tamanho_comprimido: f.tamanhoComprimido || 0, base64: f.base64 || null, url_externa: f.url || null }))
+      arquivos.map(f => ({ id: f.id, processo_id: pid, nome: f.nome, tipo: f.tipo || '', tamanho: f.tamanho || 0, tamanho_comprimido: f.tamanhoComprimido || 0, base64: f.base64 || null, url_externa: f.url || null }))
     );
     if (error) throw error;
   }
@@ -123,7 +143,7 @@ export async function sb_salvar(proc) {
     if (error) throw error;
   }
 
-  return { ...proc, id: pid };
+  return { ...proc, id: pid, arquivos };
 }
 
 export async function sb_deletar(id) {
