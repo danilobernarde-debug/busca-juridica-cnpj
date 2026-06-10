@@ -65,19 +65,14 @@ export async function sb_carregar() {
 async function _migrarArquivosParaStorage(processoId, arquivos) {
   return Promise.all((arquivos || []).map(async (f) => {
     if (f.url || !f.base64?.startsWith('data:')) return f;
-    try {
-      const [header, data] = f.base64.split(',');
-      const mime = (header.match(/:(.*?);/) || [])[1] || 'application/octet-stream';
-      const bytes = atob(data);
-      const arr = new Uint8Array(bytes.length);
-      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-      const file = new File([arr], f.nome, { type: mime });
-      const uploaded = await sb_uploadArquivo(processoId, file);
-      return { ...f, base64: null, url: uploaded.url };
-    } catch (e) {
-      console.warn('Falha ao migrar arquivo para Storage:', e.message);
-      return f;
-    }
+    const [header, data] = f.base64.split(',');
+    const mime = (header.match(/:(.*?);/) || [])[1] || 'application/octet-stream';
+    const bytes = atob(data);
+    const arr = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+    const file = new File([arr], f.nome, { type: mime });
+    const uploaded = await sb_uploadArquivo(processoId, file);
+    return { ...f, base64: null, url: uploaded.url };
   }));
 }
 
