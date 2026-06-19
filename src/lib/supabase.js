@@ -13,7 +13,7 @@ export async function sb_uploadArquivo(processoId, file) {
   const processado = await comprimirImagem(file);
   const ext = processado.name.includes('.') ? processado.name.split('.').pop() : '';
   const path = `processos/${processoId}/${crypto.randomUUID()}${ext ? '.' + ext : ''}`;
-  const { error } = await sbClient.storage.from(STORAGE_BUCKET).upload(path, processado);
+  const { error } = await sbClient.storage.from(STORAGE_BUCKET).upload(path, processado, { contentType: processado.type || 'application/octet-stream' });
   if (error) throw error;
   const { data } = sbClient.storage.from(STORAGE_BUCKET).getPublicUrl(path);
   return { url: data.publicUrl, nome: file.name, tipo: processado.type, tamanho: processado.size, base64: null };

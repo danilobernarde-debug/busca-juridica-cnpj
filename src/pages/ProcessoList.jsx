@@ -18,6 +18,12 @@ const COLUNAS = [
 ];
 const COLUNAS_PADRAO = new Set(['fase', 'parte', 'tribunal', 'tramitacao', 'valor', 'audiencias']);
 
+// Remove acentos e qualquer caractere que não seja letra/número, para comparar números de processo
+// e nomes independente de pontuação (-, ., /) e de como o usuário digitou.
+const normalizar = (s) => (s || '').toString().toLowerCase()
+  .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .replace(/[^a-z0-9]/g, '');
+
 export default function ProcessoList({ processos, tipo, setProcessoAberto, setView, onAdd, onImportDJE, onImportTexto, visitados = new Set(), onMarcarTudoVisto }) {
   const mobile = useMobile();
 
@@ -79,11 +85,28 @@ export default function ProcessoList({ processos, tipo, setProcessoAberto, setVi
           if (!nomeParte.includes(q) && !nomePartes.includes(q)) return false;
         }
         if (busca) {
-          const q = busca.toLowerCase();
-          return p.numero.toLowerCase().includes(q) || p.parte.toLowerCase().includes(q) || (p.tribunal || '').toLowerCase().includes(q);
+          const q = normalizar(busca);
+          return normalizar(p.numero).includes(q) || normalizar(p.parte).includes(q) || normalizar(p.tribunal).includes(q);
         }
         return true;
       });
+
+  // ─── SUGESTÕES DA BUSCA (typeahead) ──────────────────────────────────────────
+  const [showSugestoes, setShowSugestoes] = useState(false);
+  const sugestoes = busca.trim()
+    ? (() => {
+        const q = normalizar(busca);
+        return base.filter(p =>
+          normalizar(p.numero).includes(q) || normalizar(p.parte).includes(q) || normalizar(p.tribunal).includes(q)
+        ).slice(0, 8);
+      })()
+    : [];
+  useEffect(() => {
+    if (!showSugestoes) return;
+    const fechar = () => setShowSugestoes(false);
+    document.addEventListener('click', fechar);
+    return () => document.removeEventListener('click', fechar);
+  }, [showSugestoes]);
 
   const totalPaginas = Math.ceil(lista.length / POR_PAGINA);
   const listaPagina  = lista.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
@@ -168,7 +191,30 @@ export default function ProcessoList({ processos, tipo, setProcessoAberto, setVi
       )}
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-        <input value={busca} onChange={e => { setBusca(e.target.value); resetPagina(); }} placeholder="Buscar por número ou parte..." style={{ width: 240 }} />
+        <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+          <input
+            value={busca}
+            onChange={e => { setBusca(e.target.value); setShowSugestoes(true); resetPagina(); }}
+            onFocus={() => setShowSugestoes(true)}
+            placeholder="Buscar por número ou parte..."
+            style={{ width: 240 }}
+          />
+          {showSugestoes && sugestoes.length > 0 && (
+            <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 100, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, minWidth: 320, maxWidth: 420, boxShadow: '0 8px 24px rgba(0,0,0,.4)', overflow: 'hidden' }}>
+              {sugestoes.map(p => (
+                <div key={p.id}
+                  onClick={() => { setProcessoAberto(p); setView('detalhe'); setBusca(''); setShowSugestoes(false); }}
+                  style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid var(--border)' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
+                  onMouseLeave={e => e.currentTarget.style.background = ''}
+                >
+                  <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#93c5fd' }}>{p.numero}</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.parte}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <input value={filtroParte} onChange={e => { setFiltroParte(e.target.value); resetPagina(); }} placeholder="Filtrar por parte..." style={{ width: 200 }} />
         <select value={filtroFase} onChange={e => { setFiltroFase(e.target.value); resetPagina(); }} style={{ width: 150 }}>
           <option>Todos</option>

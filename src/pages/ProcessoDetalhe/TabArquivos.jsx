@@ -88,7 +88,7 @@ export default function TabArquivos({ arquivos, onAdd, onDel, processoId }) {
             <div style={{ fontSize: 11, color: 'var(--muted)' }}>{a.tipo === 'link' ? 'Link externo' : fmtTamanho(a.tamanho)} · {fmtDataHora(a.addedAt)}</div>
           </div>
           {a.url && <a href={a.url} target="_blank" rel="noreferrer" style={{ color: 'var(--blue)', fontSize: 12, textDecoration: 'none', padding: '4px 10px', border: '1px solid rgba(59,130,246,.3)', borderRadius: 6 }}>Abrir</a>}
-          {a.base64 && !a.url && <a href={a.base64} download={a.nome} style={{ color: 'var(--blue)', fontSize: 12, textDecoration: 'none', padding: '4px 10px', border: '1px solid rgba(59,130,246,.3)', borderRadius: 6 }}>Baixar</a>}
+          {a.base64 && !a.url && <a href={a.base64} target="_blank" rel="noreferrer" style={{ color: 'var(--blue)', fontSize: 12, textDecoration: 'none', padding: '4px 10px', border: '1px solid rgba(59,130,246,.3)', borderRadius: 6 }}>Abrir</a>}
           <button className="btn-ghost" onClick={() => onDel(a.id)} style={{ fontSize: 14 }}>✕</button>
         </div>
       ))}

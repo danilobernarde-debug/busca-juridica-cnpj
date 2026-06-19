@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { uid } from '../lib/utils.js';
-import { processarUmArquivo } from '../lib/pdf.js';
+import { processarUmArquivo, extrairComIATexto } from '../lib/pdf.js';
 
 export default function ModalDJE({ onSalvar, onFechar, onConcluido, claudeKey, processos }) {
   const [estado, setEstado] = useState('idle'); // idle | processando | revisao | concluido
@@ -90,6 +90,48 @@ export default function ModalDJE({ onSalvar, onFechar, onConcluido, claudeKey, p
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  const [analisandoIA, setAnalisandoIA] = useState(false);
+  const [erroIA, setErroIA] = useState(null);
+
+  const analisarComIA = async () => {
+    const texto = form._resultado?.texto;
+    if (!texto || !claudeKey) return;
+    setAnalisandoIA(true);
+    setErroIA(null);
+    try {
+      const ia = await extrairComIATexto(texto, claudeKey);
+      setForm(f => {
+        const novasPartes = [...(f.partes || [])];
+        const nomes = new Set(novasPartes.map(p => p.nome));
+        if (ia.autor && !nomes.has(ia.autor)) novasPartes.push({ id: uid(), nome: ia.autor, documento: null, polo: 'ativo', tipo_pessoa: 'fisica' });
+        if (ia.reclamado && !nomes.has(ia.reclamado)) novasPartes.push({ id: uid(), nome: ia.reclamado, documento: null, polo: 'passivo', tipo_pessoa: 'juridica' });
+        const novosAssuntos = [...new Set([...(f.assuntos || []), ...(ia.assuntos || [])])];
+        return {
+          ...f,
+          numero: f.numero || ia.num || f.numero,
+          parte: f.parte || ia.autor || f.parte,
+          tribunal: f.tribunal || ia.tribunal || f.tribunal,
+          tramitacao: f.tramitacao || ia.vara || f.tramitacao,
+          uf: f.uf || ia.uf || f.uf,
+          instancia: f.instancia || ia.instancia || f.instancia,
+          tipoDocumento: f.tipoDocumento || ia.tipoDocumento || f.tipoDocumento,
+          valorCausa: f.valorCausa || ia.valorCausa || f.valorCausa,
+          dataAjuizamento: f.dataAjuizamento || ia.dataAjuizamento || f.dataAjuizamento,
+          partes: novasPartes,
+          assuntos: novosAssuntos,
+          audData: f.audData || ia.data || f.audData,
+          audHora: f.audHora || ia.hora || f.audHora,
+          audTipo: f.audData ? f.audTipo : (ia.data ? (ia.tipoAud || f.audTipo) : f.audTipo),
+          audLocal: f.audLocal || ia.local || f.audLocal,
+        };
+      });
+    } catch (e) {
+      setErroIA(e.message || 'Erro ao analisar com IA');
+    } finally {
+      setAnalisandoIA(false);
+    }
+  };
+
   const avancarDecisao = (acao) => {
     const idx = indiceRef.current;
     decisoesRef.current[idx] = { acao, form };
@@ -112,22 +154,29 @@ export default function ModalDJE({ onSalvar, onFechar, onConcluido, claudeKey, p
     abrirItem(origem);
   };
 
+  const [salvando, setSalvando] = useState(false);
+
   const finalizarTudo = async () => {
-    const decisoes = decisoesRef.current;
-    let ultimoSalvoLocal = null;
-    for (const d of decisoes) {
-      if (d?.acao === 'salvar') {
-        await onSalvar({ tipo: d.form._resultado.tipo, processo: formParaProcesso(d.form) });
-        ultimoSalvoLocal = formParaProcesso(d.form);
+    setSalvando(true);
+    try {
+      const decisoes = decisoesRef.current;
+      let ultimoSalvoLocal = null;
+      for (const d of decisoes) {
+        if (d?.acao === 'salvar') {
+          await onSalvar({ tipo: d.form._resultado.tipo, processo: formParaProcesso(d.form) });
+          ultimoSalvoLocal = formParaProcesso(d.form);
+        }
       }
+      setFila(prev => prev.map((item, i) => {
+        const d = decisoes[i];
+        if (!d) return item;
+        return { ...item, status: d.acao === 'salvar' ? 'ok' : 'pulado', resultado: d.form?._resultado };
+      }));
+      setUltimoSalvo(ultimoSalvoLocal);
+      setEstado('concluido');
+    } finally {
+      setSalvando(false);
     }
-    setFila(prev => prev.map((item, i) => {
-      const d = decisoes[i];
-      if (!d) return item;
-      return { ...item, status: d.acao === 'salvar' ? 'ok' : 'pulado', resultado: d.form?._resultado };
-    }));
-    setUltimoSalvo(ultimoSalvoLocal);
-    setEstado('concluido');
   };
 
   return (
@@ -187,6 +236,20 @@ export default function ModalDJE({ onSalvar, onFechar, onConcluido, claudeKey, p
                 <span>{form._resultado?.tipo === 'atualizar' ? '⚠️ Processo já existe — a notificação será adicionada a ele.' : '✅ Novo processo. Revise e confirme.'}</span>
                 {isMulti && <span style={{ color: 'var(--muted)', fontSize: 12 }}>{idx + 1} / {total}</span>}
               </div>
+
+              {claudeKey && form._resultado?.texto && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                  <button className="btn-secondary" onClick={analisarComIA} disabled={analisandoIA}>
+                    {analisandoIA ? '⏳ Analisando...' : '🤖 Completar com IA'}
+                  </button>
+                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>Preenche campos não identificados (ex: parte contrária) usando IA.</span>
+                </div>
+              )}
+              {erroIA && (
+                <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 8, padding: '8px 12px', color: 'var(--red)', fontSize: 12, marginBottom: 16 }}>
+                  {erroIA}
+                </div>
+              )}
 
               {/* Formulário */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
@@ -266,7 +329,7 @@ export default function ModalDJE({ onSalvar, onFechar, onConcluido, claudeKey, p
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 {idx > 0 && <button className="btn-secondary" onClick={voltarAnterior}>← Voltar</button>}
                 <button className="btn-secondary" onClick={pularAtual}>Pular →</button>
-                <button className="btn-primary" onClick={confirmarAtual} disabled={!form.numero || !form.parte}>✅ Confirmar</button>
+                <button className="btn-primary" onClick={confirmarAtual} disabled={!form.numero}>✅ Confirmar</button>
               </div>
             </div>
           );
@@ -275,6 +338,12 @@ export default function ModalDJE({ onSalvar, onFechar, onConcluido, claudeKey, p
         {estado === 'resumo' && (
           <div>
             <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Confirmar importação</div>
+            {salvando && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(59,130,246,.08)', border: '1px solid rgba(59,130,246,.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#93c5fd' }}>
+                <span className="spinner" style={{ width: 14, height: 14, border: '2px solid #93c5fd', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin .7s linear infinite' }} />
+                Salvando processo(s)... isso pode levar alguns instantes.
+              </div>
+            )}
             {extraidosRef.current.map((item, i) => {
               const d = decisoesRef.current[i];
               const acao = d?.acao || 'pendente';
@@ -295,9 +364,9 @@ export default function ModalDJE({ onSalvar, onFechar, onConcluido, claudeKey, p
               );
             })}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
-              <button className="btn-secondary" onClick={voltarAnterior}>← Voltar</button>
-              <button className="btn-primary" onClick={finalizarTudo}>
-                ✅ Confirmar e salvar {decisoesRef.current.filter(d => d?.acao === 'salvar').length} processo(s)
+              <button className="btn-secondary" onClick={voltarAnterior} disabled={salvando}>← Voltar</button>
+              <button className="btn-primary" onClick={finalizarTudo} disabled={salvando}>
+                {salvando ? '⏳ Salvando...' : `✅ Confirmar e salvar ${decisoesRef.current.filter(d => d?.acao === 'salvar').length} processo(s)`}
               </button>
             </div>
           </div>

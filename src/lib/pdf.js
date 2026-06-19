@@ -66,25 +66,7 @@ export async function pdfParaImagens(file, maxPaginas = 3) {
   return imagens;
 }
 
-// Chama Claude Vision com array de { data: base64, mediaType }
-async function _chamarClaudeVision(imagens, claudeKey) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': claudeKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: 'claude-opus-4-8',
-      max_tokens: 512,
-      messages: [{
-        role: 'user',
-        content: [
-          ...imagens.map(img => ({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.data } })),
-          {
-            type: 'text', text: `Este é um documento do DJE (Diário da Justiça Eletrônico) brasileiro. Extraia as seguintes informações em JSON:
+const PROMPT_EXTRACAO = `Este é um documento do DJE (Diário da Justiça Eletrônico) brasileiro. Extraia as seguintes informações em JSON:
 {
   "numero": "número do processo no formato NNNNNNN-DD.AAAA.J.TT.OOOO",
   "tribunal": "sigla do tribunal (ex: TRT18, TJGO, TRT16)",
@@ -102,10 +84,22 @@ async function _chamarClaudeVision(imagens, claudeKey) {
   "tipoAudiencia": "tipo da audiência",
   "local": "link de videoconferência ou Presencial"
 }
-Responda APENAS o JSON, sem explicações.`
-          }
-        ]
-      }]
+Responda APENAS o JSON, sem explicações.`;
+
+// Chama Claude com blocos de conteúdo (imagens e/ou texto) e parseia o JSON de extração
+async function _chamarClaudeExtracao(content, claudeKey) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': claudeKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-opus-4-8',
+      max_tokens: 512,
+      messages: [{ role: 'user', content }]
     })
   });
   if (!res.ok) throw new Error('Erro na API Claude');
@@ -140,6 +134,21 @@ Responda APENAS o JSON, sem explicações.`
     tipoAud: json.tipoAudiencia || 'Audiência',
     local: json.local || '',
   };
+}
+
+// Usa Claude Vision com array de { data: base64, mediaType }
+async function _chamarClaudeVision(imagens, claudeKey) {
+  return _chamarClaudeExtracao([
+    ...imagens.map(img => ({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.data } })),
+    { type: 'text', text: PROMPT_EXTRACAO },
+  ], claudeKey);
+}
+
+// Usa Claude para reextrair dados a partir do texto do documento (quando o parser por regex falhou)
+export async function extrairComIATexto(texto, claudeKey) {
+  return _chamarClaudeExtracao([
+    { type: 'text', text: `${PROMPT_EXTRACAO}\n\nTexto do documento:\n${texto.slice(0, 15000)}` },
+  ], claudeKey);
 }
 
 // Usa Claude Vision para extrair dados de PDF escaneado
@@ -368,12 +377,13 @@ export async function processarUmArquivo(file, processos, claudeKey) {
   const isTXT = file.name.toLowerCase().endsWith('.txt');
   const isImage = file.type.startsWith('image/');
 
-  let dados, arq;
+  let dados, arq, textoExtraido = '';
 
   if (isTXT) {
     const texto = await lerTextoTXT(file);
     dados = parsearTXT(texto);
     arq = null;
+    textoExtraido = texto;
   } else if (isImage) {
     if (!claudeKey) throw new Error('SEMCHAVE');
     dados = await extrairComIAImagem(file, claudeKey);
@@ -381,6 +391,7 @@ export async function processarUmArquivo(file, processos, claudeKey) {
   } else {
     const arrayBuffer = await file.arrayBuffer();
     const { texto, escaneado } = await extrairTextoPDF(file);
+    textoExtraido = texto;
     if (!escaneado) {
       dados = parsearDJE(texto);
     } else {
@@ -437,7 +448,7 @@ export async function processarUmArquivo(file, processos, claudeKey) {
       tipoDocumento:   existente.tipoDocumento   || dados.tipoDocumento   || null,
       updatedAt: now(),
     };
-    return { tipo: 'atualizar', processo: atualizado, num: dados.num, parte: dados.autor };
+    return { tipo: 'atualizar', processo: atualizado, num: dados.num, parte: dados.autor, texto: textoExtraido };
   } else {
     const proc = {
       id: uid(), numero: dados.num || file.name, tipo: 'juridico', fase: 'Conhecimento',
@@ -452,6 +463,6 @@ export async function processarUmArquivo(file, processos, claudeKey) {
       assuntos: dados.assuntos || [],
       createdAt: now(), updatedAt: now(),
     };
-    return { tipo: 'criar', processo: proc, num: dados.num, parte: dados.autor };
+    return { tipo: 'criar', processo: proc, num: dados.num, parte: dados.autor, texto: textoExtraido };
   }
 }

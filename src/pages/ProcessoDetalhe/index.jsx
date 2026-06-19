@@ -15,14 +15,19 @@ export default function ProcessoDetalhe({ processo, onUpdate, onDelete, onBack, 
   const [aba, setAba] = useState('notas');
   const [editando, setEditando] = useState(false);
 
+  const autorAtual = user?.email?.split('@')[0] || user?.email || 'Usuário';
+
   const addNota = (texto) => {
-    const autor = user?.email?.split('@')[0] || user?.email || 'Usuário';
-    const nova = { id: uid(), texto, autor, createdAt: now() };
+    const nova = { id: uid(), texto, autor: autorAtual, createdAt: now() };
     onUpdate({ ...processo, notas: [...(processo.notas || []), nova], updatedAt: now() });
   };
 
   const delNota = (id) => {
     onUpdate({ ...processo, notas: (processo.notas || []).filter(n => n.id !== id), updatedAt: now() });
+  };
+
+  const editNota = (id, texto) => {
+    onUpdate({ ...processo, notas: (processo.notas || []).map(n => n.id === id ? { ...n, texto } : n), updatedAt: now() });
   };
 
   const addAudiencia = (aud) => {
@@ -96,7 +101,7 @@ export default function ProcessoDetalhe({ processo, onUpdate, onDelete, onBack, 
         ))}
       </div>
 
-      {aba === 'notas' && <TabNotas notas={processo.notas || []} onAdd={addNota} onDel={delNota} />}
+      {aba === 'notas' && <TabNotas notas={processo.notas || []} onAdd={addNota} onDel={delNota} onEdit={editNota} autorAtual={autorAtual} />}
       {aba === 'movimentacoes' && <TabMovimentacoes movimentacoes={processo.movimentacoes || []} onAdd={addMovimentacao} onDel={delMovimentacao} />}
       {aba === 'audiencias' && <TabAudiencias audiencias={processo.audiencias || []} onAdd={addAudiencia} onDel={delAudiencia} />}
       {aba === 'partes' && <TabPartes partes={processo.partes || []} onUpdate={ps => onUpdate({ ...processo, partes: ps, updatedAt: now() })} />}
