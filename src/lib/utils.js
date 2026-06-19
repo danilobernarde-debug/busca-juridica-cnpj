@@ -51,6 +51,14 @@ export function fmtHora(h) {
   return `${String(hh).padStart(2, '0')}:${min}`;
 }
 
+// Remove acentos e qualquer caractere que não seja letra/número, para comparar
+// números de processo e nomes independente de pontuação e de como foi digitado.
+export function normalizar(s) {
+  return (s || '').toString().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
 export function fmtTamanho(b) {
   if (!b) return '';
   if (b < 1024) return `${b} B`;

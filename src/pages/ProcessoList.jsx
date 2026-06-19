@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { fmtData, useMobile } from '../lib/utils.js';
+import { fmtData, useMobile, normalizar } from '../lib/utils.js';
 import { FASE_STYLE, TIPO_STYLE } from '../constants/styles.js';
 import Badge from '../components/Badge.jsx';
 import FiltrosAvancados, { filtrarArray, CAMPOS_PADRAO } from '../components/FiltrosAvancados/index.jsx';
@@ -17,12 +17,6 @@ const COLUNAS = [
   { id: 'tipoDocumento', label: 'Tipo de doc.' },
 ];
 const COLUNAS_PADRAO = new Set(['fase', 'parte', 'tribunal', 'tramitacao', 'valor', 'audiencias']);
-
-// Remove acentos e qualquer caractere que não seja letra/número, para comparar números de processo
-// e nomes independente de pontuação (-, ., /) e de como o usuário digitou.
-const normalizar = (s) => (s || '').toString().toLowerCase()
-  .normalize('NFD').replace(/[̀-ͯ]/g, '')
-  .replace(/[^a-z0-9]/g, '');
 
 export default function ProcessoList({ processos, tipo, setProcessoAberto, setView, onAdd, onImportDJE, onImportTexto, visitados = new Set(), onMarcarTudoVisto }) {
   const mobile = useMobile();

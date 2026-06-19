@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
-import { useMobile } from './lib/utils.js';
+import { useMobile, normalizar } from './lib/utils.js';
 import { sbClient, sb_carregar, sb_salvar, sb_deletar, sb_migrar, sb_carregarVistos, sb_marcarVisto, sb_marcarTodosVistos } from './lib/supabase.js';
 import { loadData, saveData } from './lib/storage.js';
 import Sidebar from './components/Sidebar.jsx';
@@ -172,7 +172,6 @@ export default function App() {
   }, [processos, config]);
 
   const addProcesso = useCallback(async (proc) => {
-    const normalizar = (n) => (n || '').replace(/[\s.\-\/]/g, '');
     const duplicado = proc.numero && processos.find(p =>
       p.id !== proc.id && normalizar(p.numero) === normalizar(proc.numero)
     );
@@ -243,12 +242,16 @@ export default function App() {
     navigate(`/processo/${saved.id}`);
   }, [processos, config, navigate]);
 
-  const delProcesso = useCallback(async (id) => {
+  const removerProcesso = useCallback(async (id) => {
     if (sbClient) { try { await sb_deletar(id); } catch (e) { setErroSB('Erro ao deletar: ' + e.message); } }
     else saveData({ processos: processos.filter(p => p.id !== id), config });
     setProcessos(prev => prev.filter(p => p.id !== id));
+  }, [processos, config]);
+
+  const delProcesso = useCallback(async (id) => {
+    await removerProcesso(id);
     navigate('/');
-  }, [processos, config, navigate]);
+  }, [removerProcesso, navigate]);
 
   const saveConfig = useCallback((cfg) => {
     setConfig(cfg);
@@ -323,7 +326,7 @@ export default function App() {
             isSuperAdmin ? <Usuarios sbClient={sbClient} userAtual={user} /> : <Navigate to="/" replace />
           } />
           <Route path="/config" element={
-            <Configuracoes config={config} onSave={saveConfig} onMigrar={migrarLocalParaSB} supabaseOk={!!sbClient && !erroSB} erroSB={erroSB} />
+            <Configuracoes config={config} onSave={saveConfig} onMigrar={migrarLocalParaSB} supabaseOk={!!sbClient && !erroSB} erroSB={erroSB} processos={processos} onDelete={removerProcesso} />
           } />
           <Route path="/acessos" element={
             user?.email === 'danilo@dbmachado.com' ? <AcessoLog sbClient={sbClient} user={user} /> : <Navigate to="/" replace />

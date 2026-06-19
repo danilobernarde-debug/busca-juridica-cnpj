@@ -1,6 +1,6 @@
 // ─── PDF ─────────────────────────────────────────────────────────────────────
 import * as pdfjsLib from 'pdfjs-dist';
-import { uid, now, fmtData } from './utils.js';
+import { uid, now, fmtData, normalizar } from './utils.js';
 import { comprimirImagem } from './compress.js';
 
 // ─── PDF.JS WORKER ───────────────────────────────────────────────────────────
@@ -416,7 +416,7 @@ export async function processarUmArquivo(file, processos, claudeKey) {
   }] : [];
 
   const existente = dados.num && processos.find(p =>
-    p.numero.replace(/[\s.\-\/]/g, '') === dados.num.replace(/[\s.\-\/]/g, '')
+    normalizar(p.numero) === normalizar(dados.num)
   );
 
   const partesNovas = [];
