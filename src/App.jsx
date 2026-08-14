@@ -11,6 +11,7 @@ import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import ProcessoList from './pages/ProcessoList.jsx';
 import Agenda from './pages/Agenda.jsx';
+import Movimentacoes from './pages/Movimentacoes.jsx';
 import Configuracoes from './pages/Configuracoes.jsx';
 import Usuarios from './pages/Usuarios.jsx';
 import AcessoLog from './pages/AcessoLog.jsx';
@@ -341,6 +342,9 @@ export default function App() {
           } />
           <Route path="/agenda" element={
             <Agenda processos={processos} setProcessoAberto={abrirProcesso} setView={legacySetView} />
+          } />
+          <Route path="/movimentacoes" element={
+            <Movimentacoes processos={processos} setProcessoAberto={abrirProcesso} setView={legacySetView} />
           } />
           <Route path="/processo/:id" element={
             <ProcessoDetalhePorId processos={processos} carregando={carregando} onUpdate={updateProcesso} onDelete={delProcesso} user={user} />

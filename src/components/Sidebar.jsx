@@ -9,6 +9,7 @@ const NAV_PATHS = {
   juridico: '/juridico',
   adm: '/adm',
   agenda: '/agenda',
+  movimentacoes: '/movimentacoes',
   usuarios: '/usuarios',
   config: '/config',
   acessos: '/acessos',
