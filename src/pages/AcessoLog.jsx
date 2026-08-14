@@ -35,7 +35,7 @@ export default function AcessoLog({ sbClient, user }) {
   );
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: 28 }}>
+    <div>
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 20, fontWeight: 800 }}>🔍 Log de Acessos</div>
         <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 2 }}>{logs.length} registro(s) — visível apenas para você</div>

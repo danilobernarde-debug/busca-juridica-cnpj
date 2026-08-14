@@ -115,7 +115,7 @@ export default function Usuarios({ sbClient, userAtual }) {
   };
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: 28 }}>
+    <div>
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>

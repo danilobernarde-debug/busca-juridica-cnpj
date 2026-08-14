@@ -10,9 +10,7 @@ const NAV_PATHS = {
   adm: '/adm',
   agenda: '/agenda',
   movimentacoes: '/movimentacoes',
-  usuarios: '/usuarios',
   config: '/config',
-  acessos: '/acessos',
 };
 
 export default function Sidebar({ counts, user, onLogout, isSuperAdmin, notificacoes = [], onAbrirNotificacao, onMarcarTodasNotificacoesLidas }) {

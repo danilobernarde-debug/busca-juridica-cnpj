@@ -13,8 +13,6 @@ import ProcessoList from './pages/ProcessoList.jsx';
 import Agenda from './pages/Agenda.jsx';
 import Movimentacoes from './pages/Movimentacoes.jsx';
 import Configuracoes from './pages/Configuracoes.jsx';
-import Usuarios from './pages/Usuarios.jsx';
-import AcessoLog from './pages/AcessoLog.jsx';
 import { registrarAcesso } from './lib/accessLog.js';
 import ProcessoDetalhe from './pages/ProcessoDetalhe/index.jsx';
 
@@ -347,14 +345,11 @@ export default function App() {
               onRecarregar={() => carregarDados(true, user?.id)} />
           } />
           <Route path="/novo/:tipo" element={<NovoProcesso onSave={addProcesso} />} />
-          <Route path="/usuarios" element={
-            isSuperAdmin ? <Usuarios sbClient={sbClient} userAtual={user} /> : <Navigate to="/" replace />
-          } />
           <Route path="/config" element={
-            <Configuracoes onMigrar={migrarLocalParaSB} supabaseOk={!!sbClient && !erroSB} erroSB={erroSB} processos={processos} onDelete={removerProcesso} />
-          } />
-          <Route path="/acessos" element={
-            user?.email === 'danilo@dbmachado.com' ? <AcessoLog sbClient={sbClient} user={user} /> : <Navigate to="/" replace />
+            isSuperAdmin
+              ? <Configuracoes onMigrar={migrarLocalParaSB} supabaseOk={!!sbClient && !erroSB} erroSB={erroSB} processos={processos} onDelete={removerProcesso}
+                  sbClient={sbClient} user={user} isOwner={user?.email === 'danilo@dbmachado.com'} />
+              : <Navigate to="/" replace />
           } />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

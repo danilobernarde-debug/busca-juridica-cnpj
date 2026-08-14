@@ -1,8 +1,10 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { normalizar, fmtDataHora } from '../lib/utils.js';
+import Usuarios from './Usuarios.jsx';
+import AcessoLog from './AcessoLog.jsx';
 
-export default function Configuracoes({ onMigrar, supabaseOk, erroSB, processos = [], onDelete }) {
+function TabGeral({ onMigrar, supabaseOk, erroSB, processos, onDelete }) {
   const navigate = useNavigate();
 
   // ─── PROCESSOS DUPLICADOS (mesma limpeza de caracteres usada ao importar) ────
@@ -18,9 +20,7 @@ export default function Configuracoes({ onMigrar, supabaseOk, erroSB, processos 
   }, [processos]);
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: 28 }}>
-      <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 20 }}>⚙️ Configurações</div>
-
+    <div>
       {/* Supabase */}
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, maxWidth: 600, marginBottom: 16 }}>
         <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12 }}>☁️ Supabase</div>
@@ -70,7 +70,35 @@ export default function Configuracoes({ onMigrar, supabaseOk, erroSB, processos 
           ))
         )}
       </div>
+    </div>
+  );
+}
 
+export default function Configuracoes({ onMigrar, supabaseOk, erroSB, processos = [], onDelete, sbClient, user, isOwner }) {
+  const [aba, setAba] = useState('geral');
+
+  const ABAS = [
+    { id: 'geral', label: '⚙️ Geral' },
+    { id: 'usuarios', label: '👥 Usuários' },
+    ...(isOwner ? [{ id: 'acessos', label: '🔍 Acessos' }] : []),
+  ];
+
+  return (
+    <div style={{ flex: 1, overflow: 'auto', padding: 28 }}>
+      <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 20 }}>⚙️ Configurações</div>
+
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20 }}>
+        {ABAS.map(a => (
+          <button key={a.id} onClick={() => setAba(a.id)}
+            style={{ padding: '8px 16px', borderRadius: 8, border: aba === a.id ? '1px solid var(--blue)' : '1px solid var(--border)', background: aba === a.id ? 'rgba(59,130,246,.15)' : 'var(--surface)', color: aba === a.id ? '#93c5fd' : 'var(--muted)', fontSize: 13, fontWeight: aba === a.id ? 700 : 400, cursor: 'pointer' }}>
+            {a.label}
+          </button>
+        ))}
+      </div>
+
+      {aba === 'geral' && <TabGeral onMigrar={onMigrar} supabaseOk={supabaseOk} erroSB={erroSB} processos={processos} onDelete={onDelete} />}
+      {aba === 'usuarios' && <Usuarios sbClient={sbClient} userAtual={user} />}
+      {aba === 'acessos' && isOwner && <AcessoLog sbClient={sbClient} user={user} />}
     </div>
   );
 }
