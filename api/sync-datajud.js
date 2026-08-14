@@ -9,10 +9,10 @@
 // novas em `jud_movimentacoes` e cria UMA notificação por processo (mesmo que
 // tragam várias movimentações de uma vez) em `jud_notificacoes`.
 //
-// Cobertura: apenas TRT (Justiça do Trabalho) e TJ (Justiça Estadual), que são
-// os segmentos cujo padrão de endpoint do DataJud foi confirmado na
-// documentação oficial (datajud-wiki.cnj.jus.br). TRF/TST/STJ/STF ficam de
-// fora por ora — o processo é apenas ignorado (não gera erro).
+// Cobertura: TRT (Justiça do Trabalho), TJ (Justiça Estadual) e TRF (Justiça
+// Federal), cujo padrão de endpoint do DataJud foi confirmado na
+// documentação oficial (datajud-wiki.cnj.jus.br). TST/STJ/STF ficam de fora
+// por ora — o processo é apenas ignorado (não gera erro).
 //
 // Requer variáveis de ambiente (configurar no painel da Vercel, não no .env
 // do frontend): SUPABASE_URL, SUPABASE_SERVICE_KEY. Opcionais: DATAJUD_API_KEY
@@ -32,6 +32,8 @@ function aliasDoTribunal(tribunalRaw) {
   const tribunal = (tribunalRaw || '').trim().toUpperCase();
   const trt = tribunal.match(/^TRT ?0?(\d{1,2})$/);
   if (trt) return `trt${parseInt(trt[1], 10)}`;
+  const trf = tribunal.match(/^TRF ?0?(\d)$/);
+  if (trf) return `trf${parseInt(trf[1], 10)}`;
   const tj = tribunal.match(/^TJ ?([A-Z]{2})$/);
   if (tj) return `tj${tj[1].toLowerCase()}`;
   return null;
