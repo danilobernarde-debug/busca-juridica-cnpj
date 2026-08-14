@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { uid } from '../../lib/utils.js';
+import { sbClient } from '../../lib/supabase.js';
+import { useVerificarDataJud, ResultadoVerificacao } from './useVerificarDataJud.jsx';
 
-export default function TabMovimentacoes({ movimentacoes, onAdd, onDel }) {
+export default function TabMovimentacoes({ movimentacoes, onAdd, onDel, processo, onRecarregar }) {
   const [form, setForm] = useState({ data: '', hora: '', evento: '', origem: '' });
   const [adicionando, setAdicionando] = useState(false);
+  const { verificando, resultado, verificarAgora } = useVerificarDataJud(processo, onRecarregar);
 
   const submit = () => {
     if (!form.evento.trim()) return;
@@ -34,8 +37,17 @@ export default function TabMovimentacoes({ movimentacoes, onAdd, onDel }) {
           </div>
         </div>
       ) : (
-        <button className="btn-primary" onClick={() => setAdicionando(true)} style={{ marginBottom: 16 }}>+ Registrar movimentação</button>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <button className="btn-primary" onClick={() => setAdicionando(true)}>+ Registrar movimentação</button>
+          {sbClient && processo && (
+            <button className="btn-secondary" onClick={verificarAgora} disabled={verificando}>
+              {verificando ? '⏳ Verificando...' : '🔄 Verificar agora'}
+            </button>
+          )}
+        </div>
       )}
+
+      <ResultadoVerificacao resultado={resultado} />
 
       {sorted.length === 0 && !adicionando && (
         <div style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: '32px 0' }}>Nenhuma movimentação registrada.</div>

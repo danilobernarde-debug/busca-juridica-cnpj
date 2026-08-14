@@ -104,7 +104,7 @@ export default function ProcessoDetalhe({ processo, onUpdate, onDelete, onBack, 
       </div>
 
       {aba === 'notas' && <TabNotas notas={processo.notas || []} onAdd={addNota} onDel={delNota} onEdit={editNota} autorAtual={autorAtual} />}
-      {aba === 'movimentacoes' && <TabMovimentacoes movimentacoes={processo.movimentacoes || []} onAdd={addMovimentacao} onDel={delMovimentacao} />}
+      {aba === 'movimentacoes' && <TabMovimentacoes movimentacoes={processo.movimentacoes || []} onAdd={addMovimentacao} onDel={delMovimentacao} processo={processo} onRecarregar={onRecarregar} />}
       {aba === 'audiencias' && <TabAudiencias audiencias={processo.audiencias || []} onAdd={addAudiencia} onDel={delAudiencia} />}
       {aba === 'partes' && <TabPartes partes={processo.partes || []} onUpdate={ps => onUpdate({ ...processo, partes: ps, updatedAt: now() })} />}
       {aba === 'arquivos' && <TabArquivos arquivos={processo.arquivos || []} onAdd={addArquivo} onDel={delArquivo} processoId={processo.id} />}
