@@ -244,6 +244,24 @@ CREATE POLICY "proprio_usuario" ON jud_processos_vistos
   USING (user_uuid = auth.uid())
   WITH CHECK (user_uuid = auth.uid());
 
+-- ─── NOTIFICAÇÕES (sincronização automática com o DataJud/CNJ) ───────────────
+-- Populada pela function /api/sync-datajud (Vercel Cron, 1x/dia).
+-- Cada linha = uma movimentação nova detectada automaticamente num processo.
+CREATE TABLE jud_notificacoes (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  processo_id     UUID NOT NULL REFERENCES jud_processos(id) ON DELETE CASCADE,
+  movimentacao_id UUID REFERENCES jud_movimentacoes(id) ON DELETE CASCADE,
+  mensagem        TEXT NOT NULL,
+  lida            BOOLEAN DEFAULT FALSE,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE jud_notificacoes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "acesso_via_processo" ON jud_notificacoes
+  FOR ALL TO authenticated
+  USING  (jud_pode_ver_por_processo(processo_id))
+  WITH CHECK (jud_pode_ver_por_processo(processo_id));
+
+
 -- ─── SUPABASE STORAGE ─────────────────────────────────────────────────────────
 -- Criar manualmente no painel Supabase → Storage → New bucket:
 --   Nome: juridico

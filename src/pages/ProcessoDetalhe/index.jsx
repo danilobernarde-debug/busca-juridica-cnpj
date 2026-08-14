@@ -10,6 +10,7 @@ import TabPartes from './TabPartes.jsx';
 import TabArquivos from './TabArquivos.jsx';
 import TabMovimentacoes from './TabMovimentacoes.jsx';
 import TabInfo from './TabInfo.jsx';
+import TabConsulta from './TabConsulta.jsx';
 
 export default function ProcessoDetalhe({ processo, onUpdate, onDelete, onBack, user }) {
   const [aba, setAba] = useState('notas');
@@ -64,6 +65,7 @@ export default function ProcessoDetalhe({ processo, onUpdate, onDelete, onBack, 
     { id: 'audiencias', label: '📅 Audiências', count: (processo.audiencias || []).length },
     { id: 'partes', label: '👥 Partes', count: (processo.partes || []).length },
     { id: 'arquivos', label: '📎 Arquivos', count: (processo.arquivos || []).length },
+    { id: 'consulta', label: '🔗 Consultar' },
     { id: 'info', label: 'ℹ️ Informações' },
   ];
 
@@ -106,6 +108,7 @@ export default function ProcessoDetalhe({ processo, onUpdate, onDelete, onBack, 
       {aba === 'audiencias' && <TabAudiencias audiencias={processo.audiencias || []} onAdd={addAudiencia} onDel={delAudiencia} />}
       {aba === 'partes' && <TabPartes partes={processo.partes || []} onUpdate={ps => onUpdate({ ...processo, partes: ps, updatedAt: now() })} />}
       {aba === 'arquivos' && <TabArquivos arquivos={processo.arquivos || []} onAdd={addArquivo} onDel={delArquivo} processoId={processo.id} />}
+      {aba === 'consulta' && <TabConsulta processo={processo} />}
       {aba === 'info' && <TabInfo processo={processo} />}
     </div>
   );

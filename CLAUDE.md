@@ -69,6 +69,7 @@ jud_notas           -- observações manuais do usuário (texto, autor, created_
 jud_movimentacoes   -- andamentos processuais do sistema (data, hora, evento, origem)
 jud_arquivos        -- arquivos anexados (nome, tipo, tamanho, base64 legado, url_externa)
 jud_user_permissoes -- permissões jurídicas por usuário (user_uuid → tipos[])
+jud_notificacoes    -- notificações de novas movimentações (populada pelo sync automático com o DataJud)
 ```
 
 ### Tabelas externas (já existiam)
@@ -190,6 +191,28 @@ VITE_SUPABASE_KEY=eyJ...  (anon key)
 VITE_SUPABASE_SERVICE_KEY=eyJ... (service role key — necessário para criar usuários)
 VITE_CLAUDE_KEY=sk-ant-...
 ```
+
+### Variáveis do backend (Vercel, não usar prefixo VITE_)
+
+Usadas só por `api/sync-datajud.js` (roda no servidor, nunca no bundle do frontend):
+
+```
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_SERVICE_KEY=eyJ...        (service role key — bypassa RLS)
+DATAJUD_API_KEY=...                (opcional — sobrescreve a chave pública padrão do DataJud)
+CRON_SECRET=...                    (opcional — protege o endpoint contra chamadas manuais)
+```
+
+---
+
+## Sincronização Automática com o DataJud (CNJ)
+
+- **`api/sync-datajud.js`** — Vercel Serverless Function, disparada 1x/dia pelo Vercel Cron (`vercel.json` → `crons`, horário `0 11 * * *` UTC ≈ 08h BRT).
+- Para cada processo `tipo=juridico` não arquivado, consulta a API Pública do DataJud (`api-publica.datajud.cnj.jus.br`) pelo número do processo.
+- **Cobertura:** apenas TRT e TJ (padrão de endpoint confirmado na documentação oficial). TRF/TST/STJ/STF são ignorados por ora.
+- Movimentações novas (que ainda não existem em `jud_movimentacoes`) são inseridas com `origem = 'DataJud (CNJ)'`, e uma notificação é criada em `jud_notificacoes`.
+- O sino de notificações (`src/components/NotificacaoSino.jsx`, na Sidebar) exibe as notificações não lidas, com polling a cada 3 minutos. Clicar numa notificação marca como lida e abre o processo.
+- A chave pública do DataJud já vem embutida no código (é compartilhada oficialmente por todos, não é secreta) — só é necessário configurar `SUPABASE_URL` e `SUPABASE_SERVICE_KEY` na Vercel para o sync funcionar.
 
 ---
 

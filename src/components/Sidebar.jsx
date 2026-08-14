@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useMobile } from '../lib/utils.js';
 import { NAV } from '../constants/styles.js';
+import NotificacaoSino from './NotificacaoSino.jsx';
 
 const NAV_PATHS = {
   dashboard: '/',
@@ -13,7 +14,7 @@ const NAV_PATHS = {
   acessos: '/acessos',
 };
 
-export default function Sidebar({ counts, user, onLogout, isSuperAdmin }) {
+export default function Sidebar({ counts, user, onLogout, isSuperAdmin, notificacoes = [], onAbrirNotificacao, onMarcarTodasNotificacoesLidas }) {
   const isOwner = user?.email === 'danilo@dbmachado.com';
   const email = user?.email || '';
   const nome = email.split('@')[0];
@@ -49,9 +50,12 @@ export default function Sidebar({ counts, user, onLogout, isSuperAdmin }) {
           <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>⚖️ DB Machado</div>
           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Sistema Jurídico</div>
         </div>
-        {mobile && (
-          <button onClick={() => setAberta(false)} style={{ background: 'transparent', color: 'var(--muted)', fontSize: 20, padding: '4px 8px' }}>✕</button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <NotificacaoSino notificacoes={notificacoes} onAbrir={onAbrirNotificacao} onMarcarTodasLidas={onMarcarTodasNotificacoesLidas} />
+          {mobile && (
+            <button onClick={() => setAberta(false)} style={{ background: 'transparent', color: 'var(--muted)', fontSize: 20, padding: '4px 8px' }}>✕</button>
+          )}
+        </div>
       </div>
 
       <nav style={{ flex: 1, minHeight: 0, padding: '8px', display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto' }}>
@@ -88,6 +92,7 @@ export default function Sidebar({ counts, user, onLogout, isSuperAdmin }) {
           <div style={{ marginLeft: 'auto', fontSize: 13, color: '#93c5fd', fontWeight: 600 }}>
             {itens.find(n => n.id === currentView)?.icon} {itens.find(n => n.id === currentView)?.label}
           </div>
+          <NotificacaoSino notificacoes={notificacoes} onAbrir={onAbrirNotificacao} onMarcarTodasLidas={onMarcarTodasNotificacoesLidas} />
         </div>
 
         {aberta && (

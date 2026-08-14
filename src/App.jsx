@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useMobile, normalizar } from './lib/utils.js';
-import { sbClient, sb_carregar, sb_salvar, sb_deletar, sb_migrar, sb_carregarVistos, sb_marcarVisto, sb_marcarTodosVistos } from './lib/supabase.js';
+import { sbClient, sb_carregar, sb_salvar, sb_deletar, sb_migrar, sb_carregarVistos, sb_marcarVisto, sb_marcarTodosVistos, sb_carregarNotificacoes, sb_marcarNotificacaoLida, sb_marcarTodasNotificacoesLidas } from './lib/supabase.js';
 import { loadData, saveData } from './lib/storage.js';
 import Sidebar from './components/Sidebar.jsx';
 import ProcessoForm from './components/ProcessoForm.jsx';
@@ -62,6 +62,7 @@ export default function App() {
   const [showDJE, setShowDJE] = useState(false);
   const [showTexto, setShowTexto] = useState(false);
   const [visitados, setVisitados] = useState(new Set());
+  const [notificacoes, setNotificacoes] = useState([]);
 
   const marcarVisitado = (id) => {
     if (visitados.has(id)) return;
@@ -75,6 +76,19 @@ export default function App() {
     setVisitados(prev => { const n = new Set(prev); novos.forEach(id => n.add(id)); return n; });
     if (user) await sb_marcarTodosVistos(user.id, novos);
   }, [visitados, user]);
+
+  const abrirNotificacao = useCallback((n) => {
+    sb_marcarNotificacaoLida(n.id);
+    setNotificacoes(prev => prev.filter(x => x.id !== n.id));
+    marcarVisitado(n.processo_id);
+    navigate(`/processo/${n.processo_id}`);
+  }, [navigate]);
+
+  const marcarTodasNotificacoesLidas = useCallback(() => {
+    const ids = notificacoes.map(n => n.id);
+    setNotificacoes([]);
+    sb_marcarTodasNotificacoesLidas(ids);
+  }, [notificacoes]);
 
   // Navega para o detalhe do processo e marca como visitado
   const abrirProcesso = useCallback((p) => {
@@ -130,6 +144,15 @@ export default function App() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Notificações de novas movimentações (sincronização automática com o DataJud)
+  useEffect(() => {
+    if (!sbClient || !user) return;
+    const carregar = () => sb_carregarNotificacoes().then(setNotificacoes).catch(() => {});
+    carregar();
+    const intervalo = setInterval(carregar, 3 * 60 * 1000);
+    return () => clearInterval(intervalo);
+  }, [user]);
 
   const carregarDados = async (silencioso = false, userId = null) => {
     if (!silencioso) setCarregando(true);
@@ -288,7 +311,8 @@ export default function App() {
 
   return (
     <>
-      <Sidebar counts={counts} user={user} onLogout={logout} isSuperAdmin={isSuperAdmin} />
+      <Sidebar counts={counts} user={user} onLogout={logout} isSuperAdmin={isSuperAdmin}
+        notificacoes={notificacoes} onAbrirNotificacao={abrirNotificacao} onMarcarTodasNotificacoesLidas={marcarTodasNotificacoesLidas} />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, paddingTop: mobile ? 52 : 0 }}>
         {erroSB && (
           <div style={{ background: 'rgba(239,68,68,.08)', borderBottom: '1px solid rgba(239,68,68,.2)', padding: '8px 20px', fontSize: 12, color: 'var(--red)', display: 'flex', gap: 10, alignItems: 'center' }}>

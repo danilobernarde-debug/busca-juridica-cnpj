@@ -174,3 +174,25 @@ export async function sb_marcarTodosVistos(userUuid, processoIds) {
   const rows = processoIds.map(id => ({ user_uuid: userUuid, processo_id: id }));
   await sbClient.from('jud_processos_vistos').upsert(rows, { onConflict: 'user_uuid,processo_id' });
 }
+
+export async function sb_carregarNotificacoes() {
+  if (!sbClient) return [];
+  const { data, error } = await sbClient
+    .from('jud_notificacoes')
+    .select('id, processo_id, mensagem, lida, created_at')
+    .eq('lida', false)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) { console.error('Erro ao carregar notificações:', error); return []; }
+  return data || [];
+}
+
+export async function sb_marcarNotificacaoLida(id) {
+  if (!sbClient) return;
+  await sbClient.from('jud_notificacoes').update({ lida: true }).eq('id', id);
+}
+
+export async function sb_marcarTodasNotificacoesLidas(ids) {
+  if (!sbClient || !ids?.length) return;
+  await sbClient.from('jud_notificacoes').update({ lida: true }).in('id', ids);
+}
