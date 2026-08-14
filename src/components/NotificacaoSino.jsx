@@ -1,20 +1,39 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { fmtDataHora } from '../lib/utils.js';
 
 export default function NotificacaoSino({ notificacoes, onAbrir, onMarcarTodasLidas }) {
   const [aberto, setAberto] = useState(false);
-  const ref = useRef(null);
+  const [pos, setPos] = useState(null);
+  const wrapRef = useRef(null);
+  const btnRef = useRef(null);
 
   useEffect(() => {
     if (!aberto) return;
-    const fechar = (e) => { if (ref.current && !ref.current.contains(e.target)) setAberto(false); };
+    const fechar = (e) => {
+      if (wrapRef.current?.contains(e.target)) return;
+      if (e.target.closest?.('[data-notif-dropdown]')) return;
+      setAberto(false);
+    };
     document.addEventListener('mousedown', fechar);
     return () => document.removeEventListener('mousedown', fechar);
   }, [aberto]);
 
+  const abrir = () => {
+    if (!aberto && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      const largura = 320;
+      setPos({
+        top: r.bottom + 6,
+        left: Math.min(r.left, window.innerWidth - largura - 10),
+      });
+    }
+    setAberto(a => !a);
+  };
+
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button onClick={() => setAberto(a => !a)}
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <button ref={btnRef} onClick={abrir}
         style={{ position: 'relative', background: 'transparent', border: 'none', color: 'var(--text)', fontSize: 18, padding: '4px 6px', cursor: 'pointer', lineHeight: 1 }}
         title="Notificações">
         🔔
@@ -25,8 +44,8 @@ export default function NotificacaoSino({ notificacoes, onAbrir, onMarcarTodasLi
         )}
       </button>
 
-      {aberto && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 6, width: 320, maxHeight: 420, overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.4)', zIndex: 400 }}>
+      {aberto && pos && createPortal(
+        <div data-notif-dropdown style={{ position: 'fixed', top: pos.top, left: pos.left, width: 320, maxHeight: 420, overflowY: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.4)', zIndex: 1000 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.04em' }}>Notificações</span>
             {notificacoes.length > 0 && (
@@ -47,7 +66,8 @@ export default function NotificacaoSino({ notificacoes, onAbrir, onMarcarTodasLi
               <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 3 }}>{fmtDataHora(n.created_at)}</div>
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
