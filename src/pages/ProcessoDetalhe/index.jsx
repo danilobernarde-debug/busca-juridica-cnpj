@@ -12,7 +12,7 @@ import TabMovimentacoes from './TabMovimentacoes.jsx';
 import TabInfo from './TabInfo.jsx';
 import TabConsulta from './TabConsulta.jsx';
 
-export default function ProcessoDetalhe({ processo, onUpdate, onDelete, onBack, user }) {
+export default function ProcessoDetalhe({ processo, onUpdate, onDelete, onBack, user, onRecarregar }) {
   const [aba, setAba] = useState('notas');
   const [editando, setEditando] = useState(false);
 
@@ -108,7 +108,7 @@ export default function ProcessoDetalhe({ processo, onUpdate, onDelete, onBack, 
       {aba === 'audiencias' && <TabAudiencias audiencias={processo.audiencias || []} onAdd={addAudiencia} onDel={delAudiencia} />}
       {aba === 'partes' && <TabPartes partes={processo.partes || []} onUpdate={ps => onUpdate({ ...processo, partes: ps, updatedAt: now() })} />}
       {aba === 'arquivos' && <TabArquivos arquivos={processo.arquivos || []} onAdd={addArquivo} onDel={delArquivo} processoId={processo.id} />}
-      {aba === 'consulta' && <TabConsulta processo={processo} />}
+      {aba === 'consulta' && <TabConsulta processo={processo} onRecarregar={onRecarregar} />}
       {aba === 'info' && <TabInfo processo={processo} />}
     </div>
   );

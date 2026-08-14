@@ -1,9 +1,13 @@
-// ─── SINCRONIZAÇÃO AUTOMÁTICA COM O DATAJUD (CNJ) ──────────────────────────
-// Disparada 1x/dia pelo Vercel Cron (ver vercel.json). Para cada processo
-// jurídico não arquivado, consulta a API Pública do DataJud, insere
-// movimentações novas em `jud_movimentacoes` e cria UMA notificação por
-// processo (mesmo que tragam várias movimentações de uma vez) em
-// `jud_notificacoes` (exibido no sininho do sistema).
+// ─── SINCRONIZAÇÃO COM O DATAJUD (CNJ) ─────────────────────────────────────
+// Disparada de duas formas:
+//   1. Vercel Cron 1x/dia (ver vercel.json), autenticado por CRON_SECRET —
+//      roda para todos os processos jurídicos não arquivados.
+//   2. Botão "Verificar agora" na aba Consultar do processo (frontend),
+//      autenticado pela sessão do usuário logado — roda só para o
+//      ?processoId= informado.
+// Em ambos os casos: consulta a API Pública do DataJud, insere movimentações
+// novas em `jud_movimentacoes` e cria UMA notificação por processo (mesmo que
+// tragam várias movimentações de uma vez) em `jud_notificacoes`.
 //
 // Cobertura: apenas TRT (Justiça do Trabalho) e TJ (Justiça Estadual), que são
 // os segmentos cujo padrão de endpoint do DataJud foi confirmado na
@@ -116,25 +120,34 @@ async function processarFila(processos, supabase, apiKey, resultado) {
 }
 
 export default async function handler(req, res) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && req.headers['authorization'] !== `Bearer ${cronSecret}`) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
-
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
   if (!supabaseUrl || !supabaseKey) {
     return res.status(500).json({ error: 'SUPABASE_URL / SUPABASE_SERVICE_KEY não configuradas' });
   }
-  const apiKey = process.env.DATAJUD_API_KEY || DATAJUD_KEY_PADRAO;
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  const { data: processos, error } = await supabase
-    .from('jud_processos')
-    .select('id, numero, tribunal')
-    .eq('tipo', 'juridico')
-    .neq('fase', 'Arquivado');
+  // Duas formas de disparar: o cron da Vercel (com CRON_SECRET) rodando para
+  // todos os processos, ou um usuário logado no sistema pedindo "verificar
+  // agora" um processo específico (?processoId=...), autenticado pelo próprio
+  // token de sessão do Supabase.
+  const cronSecret = process.env.CRON_SECRET;
+  const authHeader = req.headers['authorization'] || '';
+  const isCron = cronSecret && authHeader === `Bearer ${cronSecret}`;
+  if (!isCron) {
+    const token = authHeader.replace(/^Bearer /, '');
+    const { data: userData } = token ? await supabase.auth.getUser(token) : { data: null };
+    if (!userData?.user) return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  const apiKey = process.env.DATAJUD_API_KEY || DATAJUD_KEY_PADRAO;
+  const processoId = req.query?.processoId;
+
+  let query = supabase.from('jud_processos').select('id, numero, tribunal').eq('tipo', 'juridico');
+  query = processoId ? query.eq('id', processoId) : query.neq('fase', 'Arquivado');
+  const { data: processos, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
+  if (processoId && !processos.length) return res.status(404).json({ error: 'Processo não encontrado' });
 
   const resultado = { verificados: 0, comNovidade: 0, ignorados: 0, erros: [] };
   await processarFila(processos, supabase, apiKey, resultado);

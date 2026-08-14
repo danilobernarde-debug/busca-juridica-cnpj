@@ -20,7 +20,7 @@ import ProcessoDetalhe from './pages/ProcessoDetalhe/index.jsx';
 
 // ─── WRAPPERS DE ROTA ─────────────────────────────────────────────────────────
 
-function ProcessoDetalhePorId({ processos, carregando, onUpdate, onDelete, user }) {
+function ProcessoDetalhePorId({ processos, carregando, onUpdate, onDelete, user, onRecarregar }) {
   const { id } = useParams();
   const navigate = useNavigate();
   if (carregando) return null;
@@ -33,6 +33,7 @@ function ProcessoDetalhePorId({ processos, carregando, onUpdate, onDelete, user 
       onDelete={onDelete}
       onBack={() => navigate(processo.tipo === 'juridico' ? '/juridico' : '/adm')}
       user={user}
+      onRecarregar={onRecarregar}
     />
   );
 }
@@ -347,7 +348,8 @@ export default function App() {
             <Movimentacoes processos={processos} setProcessoAberto={abrirProcesso} setView={legacySetView} />
           } />
           <Route path="/processo/:id" element={
-            <ProcessoDetalhePorId processos={processos} carregando={carregando} onUpdate={updateProcesso} onDelete={delProcesso} user={user} />
+            <ProcessoDetalhePorId processos={processos} carregando={carregando} onUpdate={updateProcesso} onDelete={delProcesso} user={user}
+              onRecarregar={() => carregarDados(true, user?.id)} />
           } />
           <Route path="/novo/:tipo" element={<NovoProcesso onSave={addProcesso} />} />
           <Route path="/usuarios" element={
