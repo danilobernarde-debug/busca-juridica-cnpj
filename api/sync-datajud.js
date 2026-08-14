@@ -1,7 +1,8 @@
 // ─── SINCRONIZAÇÃO AUTOMÁTICA COM O DATAJUD (CNJ) ──────────────────────────
 // Disparada 1x/dia pelo Vercel Cron (ver vercel.json). Para cada processo
 // jurídico não arquivado, consulta a API Pública do DataJud, insere
-// movimentações novas em `jud_movimentacoes` e cria um registro em
+// movimentações novas em `jud_movimentacoes` e cria UMA notificação por
+// processo (mesmo que tragam várias movimentações de uma vez) em
 // `jud_notificacoes` (exibido no sininho do sistema).
 //
 // Cobertura: apenas TRT (Justiça do Trabalho) e TJ (Justiça Estadual), que são
@@ -30,6 +31,12 @@ function aliasDoTribunal(tribunalRaw) {
   const tj = tribunal.match(/^TJ ?([A-Z]{2})$/);
   if (tj) return `tj${tj[1].toLowerCase()}`;
   return null;
+}
+
+function fmtDataBR(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
 }
 
 async function consultarDataJud(alias, numeroLimpo, apiKey) {
@@ -73,17 +80,23 @@ async function processarProcesso(p, supabase, apiKey, resultado) {
     if (!novas.length) return;
 
     const { data: inseridas, error: insErr } = await supabase
-      .from('jud_movimentacoes').insert(novas).select('id, processo_id, evento');
+      .from('jud_movimentacoes').insert(novas).select('id, processo_id, data, hora, evento');
     if (insErr) { resultado.erros.push(`${p.numero}: ${insErr.message}`); return; }
 
     resultado.comNovidade++;
-    await supabase.from('jud_notificacoes').insert(
-      inseridas.map(m => ({
-        processo_id: m.processo_id,
-        movimentacao_id: m.id,
-        mensagem: `Nova movimentação em ${p.numero}: ${m.evento}`,
-      }))
-    );
+
+    // Uma notificação por processo (não por movimentação) — um processo pode
+    // trazer dezenas/centenas de itens numa sincronização (ex: primeira vez).
+    const maisRecente = [...inseridas].sort((a, b) => `${b.data}${b.hora}`.localeCompare(`${a.data}${a.hora}`))[0];
+    const mensagem = inseridas.length === 1
+      ? `Nova movimentação em ${p.numero} (${fmtDataBR(maisRecente.data)}): ${maisRecente.evento}`
+      : `${inseridas.length} movimentações novas em ${p.numero} — mais recente (${fmtDataBR(maisRecente.data)}): ${maisRecente.evento}`;
+
+    await supabase.from('jud_notificacoes').insert([{
+      processo_id: p.id,
+      movimentacao_id: maisRecente.id,
+      mensagem,
+    }]);
   } catch (e) {
     resultado.erros.push(`${p.numero}: ${e.message}`);
   }
