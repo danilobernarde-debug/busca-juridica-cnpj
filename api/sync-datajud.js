@@ -14,7 +14,10 @@
 // (sobrescreve a chave pública padrão) e CRON_SECRET (protege o endpoint).
 import { createClient } from '@supabase/supabase-js';
 
-export const config = { maxDuration: 60 };
+// Hobby plan da Vercel permite até 300s — deixamos folga porque o volume de
+// processos pode crescer (hoje já passa de 200 processos ativos TRT/TJ).
+export const config = { maxDuration: 280 };
+const CONCORRENCIA = 6; // requisições simultâneas ao DataJud
 
 const DATAJUD_BASE = 'https://api-publica.datajud.cnj.jus.br';
 // Chave pública oficial do DataJud (datajud-wiki.cnj.jus.br/api-publica/acesso) — compartilhada por todos, não é secreta.
@@ -40,6 +43,65 @@ async function consultarDataJud(alias, numeroLimpo, apiKey) {
   return json?.hits?.hits?.[0]?._source || null;
 }
 
+async function processarProcesso(p, supabase, apiKey, resultado) {
+  const alias = aliasDoTribunal(p.tribunal);
+  const numeroLimpo = (p.numero || '').replace(/\D/g, '');
+  if (!alias || numeroLimpo.length !== 20) { resultado.ignorados++; return; }
+
+  resultado.verificados++;
+  try {
+    const fonte = await consultarDataJud(alias, numeroLimpo, apiKey);
+    const movimentos = fonte?.movimentos || [];
+    if (!movimentos.length) return;
+
+    const { data: existentes } = await supabase
+      .from('jud_movimentacoes')
+      .select('data, hora, evento')
+      .eq('processo_id', p.id);
+    const chaveExistente = new Set((existentes || []).map(m => `${m.data}|${m.hora}|${m.evento}`));
+
+    const novas = [];
+    for (const mv of movimentos) {
+      const dt = mv.dataHora ? new Date(mv.dataHora) : null;
+      const data = dt ? dt.toISOString().slice(0, 10) : null;
+      const hora = dt ? dt.toISOString().slice(11, 16) : null;
+      const evento = mv.nome || 'Movimentação';
+      const chave = `${data}|${hora}|${evento}`;
+      if (chaveExistente.has(chave)) continue;
+      novas.push({ processo_id: p.id, data, hora, evento, origem: 'DataJud (CNJ)' });
+    }
+    if (!novas.length) return;
+
+    const { data: inseridas, error: insErr } = await supabase
+      .from('jud_movimentacoes').insert(novas).select('id, processo_id, evento');
+    if (insErr) { resultado.erros.push(`${p.numero}: ${insErr.message}`); return; }
+
+    resultado.comNovidade++;
+    await supabase.from('jud_notificacoes').insert(
+      inseridas.map(m => ({
+        processo_id: m.processo_id,
+        movimentacao_id: m.id,
+        mensagem: `Nova movimentação em ${p.numero}: ${m.evento}`,
+      }))
+    );
+  } catch (e) {
+    resultado.erros.push(`${p.numero}: ${e.message}`);
+  }
+}
+
+// Processa a fila com um pool de workers concorrentes, em vez de sequencial
+// com pausa — com 200+ processos, sequencial estourava o tempo máximo da function.
+async function processarFila(processos, supabase, apiKey, resultado) {
+  let cursor = 0;
+  async function worker() {
+    while (cursor < processos.length) {
+      const p = processos[cursor++];
+      await processarProcesso(p, supabase, apiKey, resultado);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(CONCORRENCIA, processos.length) }, worker));
+}
+
 export default async function handler(req, res) {
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret && req.headers['authorization'] !== `Bearer ${cronSecret}`) {
@@ -62,54 +124,7 @@ export default async function handler(req, res) {
   if (error) return res.status(500).json({ error: error.message });
 
   const resultado = { verificados: 0, comNovidade: 0, ignorados: 0, erros: [] };
-
-  for (const p of processos) {
-    const alias = aliasDoTribunal(p.tribunal);
-    const numeroLimpo = (p.numero || '').replace(/\D/g, '');
-    if (!alias || numeroLimpo.length !== 20) { resultado.ignorados++; continue; }
-
-    resultado.verificados++;
-    try {
-      const fonte = await consultarDataJud(alias, numeroLimpo, apiKey);
-      const movimentos = fonte?.movimentos || [];
-      if (!movimentos.length) continue;
-
-      const { data: existentes } = await supabase
-        .from('jud_movimentacoes')
-        .select('data, hora, evento')
-        .eq('processo_id', p.id);
-      const chaveExistente = new Set((existentes || []).map(m => `${m.data}|${m.hora}|${m.evento}`));
-
-      const novas = [];
-      for (const mv of movimentos) {
-        const dt = mv.dataHora ? new Date(mv.dataHora) : null;
-        const data = dt ? dt.toISOString().slice(0, 10) : null;
-        const hora = dt ? dt.toISOString().slice(11, 16) : null;
-        const evento = mv.nome || 'Movimentação';
-        const chave = `${data}|${hora}|${evento}`;
-        if (chaveExistente.has(chave)) continue;
-        novas.push({ processo_id: p.id, data, hora, evento, origem: 'DataJud (CNJ)' });
-      }
-      if (!novas.length) continue;
-
-      const { data: inseridas, error: insErr } = await supabase
-        .from('jud_movimentacoes').insert(novas).select('id, processo_id, evento');
-      if (insErr) { resultado.erros.push(`${p.numero}: ${insErr.message}`); continue; }
-
-      resultado.comNovidade++;
-      await supabase.from('jud_notificacoes').insert(
-        inseridas.map(m => ({
-          processo_id: m.processo_id,
-          movimentacao_id: m.id,
-          mensagem: `Nova movimentação em ${p.numero}: ${m.evento}`,
-        }))
-      );
-    } catch (e) {
-      resultado.erros.push(`${p.numero}: ${e.message}`);
-    }
-
-    await new Promise(r => setTimeout(r, 250)); // evita rate limit do DataJud
-  }
+  await processarFila(processos, supabase, apiKey, resultado);
 
   return res.status(200).json(resultado);
 }
