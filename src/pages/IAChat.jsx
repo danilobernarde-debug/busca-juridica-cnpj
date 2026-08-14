@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
+import { chamarClaude } from '../lib/claude.js';
 
-export default function IAChat({ processos, claudeKey }) {
+export default function IAChat({ processos }) {
   const [msgs, setMsgs] = useState([
     { role: 'assistant', content: 'Olá! Sou seu assistente jurídico. Posso analisar seus processos, identificar prazos críticos, resumir situações e responder perguntas sobre seu portfólio jurídico. Como posso ajudar?' }
   ]);
@@ -40,7 +41,6 @@ Responda em português, de forma objetiva e direta. Destaque urgências e prazos
 
   const enviar = async () => {
     if (!input.trim() || loading) return;
-    if (!claudeKey) { setMsgs(m => [...m, { role: 'assistant', content: '⚙️ Configure a chave da API Claude em Configurações para usar a IA.' }]); setInput(''); return; }
 
     const novaMsg = { role: 'user', content: input.trim() };
     setMsgs(m => [...m, novaMsg]);
@@ -49,23 +49,12 @@ Responda em português, de forma objetiva e direta. Destaque urgências e prazos
 
     try {
       const history = msgs.filter(m => m.role !== 'system').slice(-8);
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': claudeKey,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 1024,
-          system: buildContext(),
-          messages: [...history, novaMsg],
-        })
+      const data = await chamarClaude({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1024,
+        system: buildContext(),
+        messages: [...history, novaMsg],
       });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || 'Erro na API'); }
-      const data = await res.json();
       setMsgs(m => [...m, { role: 'assistant', content: data.content[0].text }]);
     } catch (e) {
       setMsgs(m => [...m, { role: 'assistant', content: `❌ Erro: ${e.message}` }]);
@@ -77,11 +66,6 @@ Responda em português, de forma objetiva e direta. Destaque urgências e prazos
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 28, gap: 16 }}>
       <div style={{ fontWeight: 800, fontSize: 18 }}>🤖 IA Jurídica</div>
-      {!claudeKey && (
-        <div style={{ background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.3)', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#fcd34d' }}>
-          ⚙️ Configure a chave Claude em <strong>Configurações</strong> para ativar a IA.
-        </div>
-      )}
       <div ref={containerRef} style={{ flex: 1, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}>
         {msgs.map((m, i) => (
           <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>

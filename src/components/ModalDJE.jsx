@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { uid } from '../lib/utils.js';
 import { processarUmArquivo, extrairComIATexto } from '../lib/pdf.js';
 
-export default function ModalDJE({ onSalvar, onFechar, onConcluido, claudeKey, processos }) {
+export default function ModalDJE({ onSalvar, onFechar, onConcluido, processos }) {
   const [estado, setEstado] = useState('idle'); // idle | processando | revisao | concluido
   const [fila, setFila] = useState([]);       // { file, status, resultado, erro }
   const [atual, setAtual] = useState(0);
@@ -48,7 +48,7 @@ export default function ModalDJE({ onSalvar, onFechar, onConcluido, claudeKey, p
       setAtual(i);
       setFila(prev => prev.map((item, idx) => idx === i ? { ...item, status: 'processando' } : item));
       try {
-        const resultado = await processarUmArquivo(lista[i], processos, claudeKey);
+        const resultado = await processarUmArquivo(lista[i], processos);
         extraidos.push({ nome: lista[i].name, resultado });
         setFila(prev => prev.map((item, idx) => idx === i ? { ...item, status: 'lido' } : item));
       } catch (e) {
@@ -95,11 +95,11 @@ export default function ModalDJE({ onSalvar, onFechar, onConcluido, claudeKey, p
 
   const analisarComIA = async () => {
     const texto = form._resultado?.texto;
-    if (!texto || !claudeKey) return;
+    if (!texto) return;
     setAnalisandoIA(true);
     setErroIA(null);
     try {
-      const ia = await extrairComIATexto(texto, claudeKey);
+      const ia = await extrairComIATexto(texto);
       setForm(f => {
         const novasPartes = [...(f.partes || [])];
         const nomes = new Set(novasPartes.map(p => p.nome));
@@ -237,7 +237,7 @@ export default function ModalDJE({ onSalvar, onFechar, onConcluido, claudeKey, p
                 {isMulti && <span style={{ color: 'var(--muted)', fontSize: 12 }}>{idx + 1} / {total}</span>}
               </div>
 
-              {claudeKey && form._resultado?.texto && (
+              {form._resultado?.texto && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
                   <button className="btn-secondary" onClick={analisarComIA} disabled={analisandoIA}>
                     {analisandoIA ? '⏳ Analisando...' : '🤖 Completar com IA'}

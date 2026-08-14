@@ -8,7 +8,7 @@ export function loadData() {
   } catch {}
   return {
     processos: [],
-    config: { claudeKey: import.meta.env.VITE_CLAUDE_KEY || '' }
+    config: {}
   };
 }
 

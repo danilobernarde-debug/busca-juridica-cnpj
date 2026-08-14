@@ -2,6 +2,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import { uid, now, fmtData, normalizar } from './utils.js';
 import { comprimirImagem } from './compress.js';
+import { chamarClaude } from './claude.js';
 
 // ─── PDF.JS WORKER ───────────────────────────────────────────────────────────
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.js', import.meta.url).href;
@@ -86,24 +87,13 @@ const PROMPT_EXTRACAO = `Este é um documento do DJE (Diário da Justiça Eletr�
 }
 Responda APENAS o JSON, sem explicações.`;
 
-// Chama Claude com blocos de conteúdo (imagens e/ou texto) e parseia o JSON de extração
-async function _chamarClaudeExtracao(content, claudeKey) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': claudeKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: 'claude-opus-4-8',
-      max_tokens: 512,
-      messages: [{ role: 'user', content }]
-    })
+// Chama Claude (via proxy server-side) com blocos de conteúdo (imagens e/ou texto) e parseia o JSON de extração
+async function _chamarClaudeExtracao(content) {
+  const data = await chamarClaude({
+    model: 'claude-opus-4-8',
+    max_tokens: 512,
+    messages: [{ role: 'user', content }]
   });
-  if (!res.ok) throw new Error('Erro na API Claude');
-  const data = await res.json();
   const json = JSON.parse(data.content[0].text.match(/\{[\s\S]*\}/)[0]);
   let data_ = '', hora = '';
   if (json.dataAudiencia) {
@@ -137,31 +127,31 @@ async function _chamarClaudeExtracao(content, claudeKey) {
 }
 
 // Usa Claude Vision com array de { data: base64, mediaType }
-async function _chamarClaudeVision(imagens, claudeKey) {
+async function _chamarClaudeVision(imagens) {
   return _chamarClaudeExtracao([
     ...imagens.map(img => ({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.data } })),
     { type: 'text', text: PROMPT_EXTRACAO },
-  ], claudeKey);
+  ]);
 }
 
 // Usa Claude para reextrair dados a partir do texto do documento (quando o parser por regex falhou)
-export async function extrairComIATexto(texto, claudeKey) {
+export async function extrairComIATexto(texto) {
   return _chamarClaudeExtracao([
     { type: 'text', text: `${PROMPT_EXTRACAO}\n\nTexto do documento:\n${texto.slice(0, 15000)}` },
-  ], claudeKey);
+  ]);
 }
 
 // Usa Claude Vision para extrair dados de PDF escaneado
-export async function extrairComIA(file, claudeKey) {
+export async function extrairComIA(file) {
   const imgs = await pdfParaImagens(file);
-  return _chamarClaudeVision(imgs.map(data => ({ data, mediaType: 'image/jpeg' })), claudeKey);
+  return _chamarClaudeVision(imgs.map(data => ({ data, mediaType: 'image/jpeg' })));
 }
 
 const FORMATOS_SUPORTADOS_CLAUDE = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
 // Usa Claude Vision para extrair dados de uma imagem diretamente
 // Comprime antes de enviar (max 1920px, JPEG 75%) para garantir compatibilidade
-export async function extrairComIAImagem(file, claudeKey) {
+export async function extrairComIAImagem(file) {
   // Valida formato antes de tentar (TIFF, BMP etc. não são suportados pelo Claude Vision)
   if (!FORMATOS_SUPORTADOS_CLAUDE.includes(file.type)) {
     const ext = file.name.split('.').pop().toUpperCase();
@@ -174,7 +164,7 @@ export async function extrairComIAImagem(file, claudeKey) {
     reader.onload = async (e) => {
       try {
         const base64 = e.target.result.split(',')[1];
-        const resultado = await _chamarClaudeVision([{ data: base64, mediaType: 'image/jpeg' }], claudeKey);
+        const resultado = await _chamarClaudeVision([{ data: base64, mediaType: 'image/jpeg' }]);
         resolve(resultado);
       } catch (err) {
         reject(err);
@@ -373,7 +363,7 @@ export function parsearTXT(texto) {
 }
 
 // ─── HELPER: processa um único arquivo e retorna { tipo, processo } ──────────
-export async function processarUmArquivo(file, processos, claudeKey) {
+export async function processarUmArquivo(file, processos) {
   const isTXT = file.name.toLowerCase().endsWith('.txt');
   const isImage = file.type.startsWith('image/');
 
@@ -385,8 +375,7 @@ export async function processarUmArquivo(file, processos, claudeKey) {
     arq = null;
     textoExtraido = texto;
   } else if (isImage) {
-    if (!claudeKey) throw new Error('SEMCHAVE');
-    dados = await extrairComIAImagem(file, claudeKey);
+    dados = await extrairComIAImagem(file);
     arq = null;
   } else {
     const arrayBuffer = await file.arrayBuffer();
@@ -395,8 +384,7 @@ export async function processarUmArquivo(file, processos, claudeKey) {
     if (!escaneado) {
       dados = parsearDJE(texto);
     } else {
-      if (!claudeKey) throw new Error('SEMCHAVE');
-      dados = await extrairComIA(file, claudeKey);
+      dados = await extrairComIA(file);
     }
     const comprimido = await comprimirArquivo(arrayBuffer);
     const base64 = comprimido

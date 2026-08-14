@@ -8,7 +8,7 @@ Sistema web para acompanhamento de processos jurídicos da **DB Machado / Rede F
 
 - **Frontend:** React + Vite (`npm run dev` / `npm run build`)
 - **Backend:** Supabase (PostgreSQL + Auth + Storage)
-- **IA:** Anthropic API — Claude Haiku para parsing de texto, Claude Opus para PDFs escaneados
+- **IA:** Anthropic API — Claude Haiku para parsing de texto, Claude Opus para PDFs escaneados. Chamada via proxy server-side (`api/claude.js`) — a chave nunca fica no frontend.
 - **PDF:** pdfjs-dist para extração de texto e renderização como imagem
 - **Autenticação:** Supabase Auth com `d_auth_user` customizado
 
@@ -178,7 +178,7 @@ jud_pode_ver_por_processo(p_processo_id) → BOOLEAN
 ### 2. Colar Texto (ModalTexto)
 - Aceita qualquer texto colado
 - Tenta `parsearTextoEstruturado` (formato PJUD/CNOG — estrutura chave/valor)
-- Se não reconhecer → Claude Haiku extrai os dados (requer chave configurada)
+- Se não reconhecer → Claude Haiku extrai os dados via `api/claude.js`
 - Extrai: número, tribunal, vara, partes, audiência, assuntos, Log de Auditoria → movimentações
 
 ---
@@ -189,18 +189,23 @@ jud_pode_ver_por_processo(p_processo_id) → BOOLEAN
 VITE_SUPABASE_URL=https://xxx.supabase.co
 VITE_SUPABASE_KEY=eyJ...  (anon key)
 VITE_SUPABASE_SERVICE_KEY=eyJ... (service role key — necessário para criar usuários)
-VITE_CLAUDE_KEY=sk-ant-...
 ```
+
+> ⚠️ Nunca colocar chave da Anthropic (nem nenhum outro segredo real) em variável
+> `VITE_*` — o Vite embute o valor literal no bundle de produção, público para
+> qualquer visitante do site (já aconteceu com `VITE_CLAUDE_KEY`, removida e
+> revogada). Segredos de servidor vão nas variáveis abaixo, sem prefixo `VITE_`.
 
 ### Variáveis do backend (Vercel, não usar prefixo VITE_)
 
-Usadas só por `api/sync-datajud.js` (roda no servidor, nunca no bundle do frontend):
+Usadas por `api/sync-datajud.js` e `api/claude.js` (rodam no servidor, nunca no bundle do frontend):
 
 ```
 SUPABASE_URL=https://xxx.supabase.co
 SUPABASE_SERVICE_KEY=eyJ...        (service role key — bypassa RLS)
 DATAJUD_API_KEY=...                (opcional — sobrescreve a chave pública padrão do DataJud)
-CRON_SECRET=...                    (opcional — protege o endpoint contra chamadas manuais)
+CRON_SECRET=...                    (opcional — protege o /api/sync-datajud contra chamadas manuais)
+ANTHROPIC_API_KEY=sk-ant-...       (obrigatória para IA — usada só por api/claude.js)
 ```
 
 ---

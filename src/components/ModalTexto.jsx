@@ -5,7 +5,7 @@ import { parsearTextoEstruturado, extrairProcessoComIA } from '../lib/parsearTex
 const FASES = ['Conhecimento', 'Execução', 'Arquivado'];
 const TIPOS_AUD = ['Audiência Inicial', 'Conciliação', 'Instrução', 'Julgamento', 'Perícia', 'Outro'];
 
-export default function ModalTexto({ onSalvar, onFechar, processos, claudeKey }) {
+export default function ModalTexto({ onSalvar, onFechar, processos }) {
   const [estado, setEstado] = useState('idle'); // idle | processando | revisao | salvo
   const [texto, setTexto] = useState('');
   const [erro, setErro] = useState('');
@@ -19,12 +19,7 @@ export default function ModalTexto({ onSalvar, onFechar, processos, claudeKey })
       let parsed = parsearTextoEstruturado(texto);
 
       if (!parsed.numero) {
-        if (!claudeKey) {
-          setErro('Formato não reconhecido e nenhuma chave de IA configurada. Configure a chave Claude nas Configurações.');
-          setEstado('idle');
-          return;
-        }
-        parsed = await extrairProcessoComIA(texto, claudeKey);
+        parsed = await extrairProcessoComIA(texto);
       }
 
       if (!parsed.numero) {

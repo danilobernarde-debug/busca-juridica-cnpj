@@ -57,7 +57,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [processos, setProcessos] = useState([]);
-  const [config, setConfig] = useState({ claudeKey: import.meta.env.VITE_CLAUDE_KEY || '' });
+  const [config, setConfig] = useState({});
   const [carregando, setCarregando] = useState(true);
   const jaCarregouRef = useRef(false);
   const [erroSB, setErroSB] = useState(null);
@@ -109,7 +109,7 @@ export default function App() {
     if (!sbClient) {
       const local = loadData();
       setProcessos(local.processos || []);
-      setConfig(local.config || { claudeKey: import.meta.env.VITE_CLAUDE_KEY || '' });
+      setConfig(local.config || {});
       setCarregando(false);
       return;
     }
@@ -278,11 +278,6 @@ export default function App() {
     navigate('/');
   }, [removerProcesso, navigate]);
 
-  const saveConfig = useCallback((cfg) => {
-    setConfig(cfg);
-    saveData({ processos, config: cfg });
-  }, [processos]);
-
   const migrarLocalParaSB = async () => {
     if (!sbClient) return;
     const local = loadData();
@@ -356,7 +351,7 @@ export default function App() {
             isSuperAdmin ? <Usuarios sbClient={sbClient} userAtual={user} /> : <Navigate to="/" replace />
           } />
           <Route path="/config" element={
-            <Configuracoes config={config} onSave={saveConfig} onMigrar={migrarLocalParaSB} supabaseOk={!!sbClient && !erroSB} erroSB={erroSB} processos={processos} onDelete={removerProcesso} />
+            <Configuracoes onMigrar={migrarLocalParaSB} supabaseOk={!!sbClient && !erroSB} erroSB={erroSB} processos={processos} onDelete={removerProcesso} />
           } />
           <Route path="/acessos" element={
             user?.email === 'danilo@dbmachado.com' ? <AcessoLog sbClient={sbClient} user={user} /> : <Navigate to="/" replace />
@@ -368,7 +363,6 @@ export default function App() {
       {showTexto && (
         <ModalTexto
           processos={processos}
-          claudeKey={config.claudeKey}
           onFechar={() => setShowTexto(false)}
           onSalvar={async (proc) => {
             const resultado = await addProcesso(proc);
@@ -378,7 +372,6 @@ export default function App() {
       )}
       {showDJE && (
         <ModalDJE
-          claudeKey={config.claudeKey}
           processos={processos}
           onFechar={() => setShowDJE(false)}
           onSalvar={async ({ tipo, processo }) => {

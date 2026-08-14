@@ -1,3 +1,5 @@
+import { chamarClaude } from './claude.js';
+
 function get(texto, label) {
   const esc = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const m = texto.match(new RegExp(esc + '\\s*\\n\\s*(.+)', 'i'));
@@ -79,21 +81,13 @@ function extrairAudiencia(texto) {
   return { data, hora, tipo, local, obs: '' };
 }
 
-export async function extrairProcessoComIA(texto, claudeKey) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': claudeKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      messages: [{
-        role: 'user',
-        content: `Extraia as informações do processo jurídico abaixo e retorne APENAS um JSON válido, sem explicações:
+export async function extrairProcessoComIA(texto) {
+  const data = await chamarClaude({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 1024,
+    messages: [{
+      role: 'user',
+      content: `Extraia as informações do processo jurídico abaixo e retorne APENAS um JSON válido, sem explicações:
 
 {
   "numero": "número do processo (formato CNJ: NNNNNNN-DD.AAAA.J.TT.OOOO)",
@@ -124,11 +118,8 @@ export async function extrairProcessoComIA(texto, claudeKey) {
 
 Texto:
 ${texto}`,
-      }],
-    }),
+    }],
   });
-  if (!res.ok) throw new Error('Erro na API Claude');
-  const data = await res.json();
   const json = JSON.parse(data.content[0].text.match(/\{[\s\S]*\}/)[0]);
 
   const aud = json.audiencia?.data ? [{
