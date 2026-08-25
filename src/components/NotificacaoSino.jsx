@@ -1,12 +1,52 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { fmtDataHora } from '../lib/utils.js';
+import { sbClient } from '../lib/supabase.js';
 
-export default function NotificacaoSino({ notificacoes, onAbrir, onMarcarTodasLidas }) {
+const RESULTADO_STYLE = {
+  novidade: { bg: 'rgba(34,197,94,.1)', border: 'rgba(34,197,94,.3)', color: 'var(--green)' },
+  ok: { bg: 'rgba(148,163,184,.1)', border: 'rgba(148,163,184,.3)', color: 'var(--muted)' },
+  erro: { bg: 'rgba(239,68,68,.1)', border: 'rgba(239,68,68,.3)', color: 'var(--red)' },
+};
+
+export default function NotificacaoSino({ notificacoes, onAbrir, onMarcarTodasLidas, onVerificacaoConcluida }) {
   const [aberto, setAberto] = useState(false);
   const [pos, setPos] = useState(null);
+  const [verificando, setVerificando] = useState(false);
+  const [resultado, setResultado] = useState(null);
   const wrapRef = useRef(null);
   const btnRef = useRef(null);
+
+  const verificarTudo = async () => {
+    if (!sbClient) return;
+    setVerificando(true);
+    setResultado(null);
+    try {
+      const { data: { session } } = await sbClient.auth.getSession();
+      const resp = await fetch('/api/sync-datajud', {
+        method: 'POST',
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        setResultado({ tipo: 'erro', texto: json.error || 'Erro ao verificar.' });
+      } else {
+        const ignorados = json.ignorados > 0 ? ` (${json.ignorados} ignorado(s) — órgão não suportado)` : '';
+        if (json.erros?.length) {
+          setResultado({ tipo: 'erro', texto: `${json.verificados} verificado(s), ${json.erros.length} com erro. Ex: ${json.erros[0]}` });
+        } else if (json.comNovidade > 0) {
+          setResultado({ tipo: 'novidade', texto: `${json.verificados} processo(s) verificado(s) — ${json.comNovidade} com movimentação nova${ignorados}.` });
+        } else {
+          setResultado({ tipo: 'ok', texto: `${json.verificados} processo(s) verificado(s) — nenhuma novidade${ignorados}.` });
+        }
+      }
+      onVerificacaoConcluida?.();
+    } catch (e) {
+      setResultado({ tipo: 'erro', texto: e.message });
+    } finally {
+      setVerificando(false);
+    }
+  };
 
   useEffect(() => {
     if (!aberto) return;
@@ -54,6 +94,22 @@ export default function NotificacaoSino({ notificacoes, onAbrir, onMarcarTodasLi
               </button>
             )}
           </div>
+
+          {sbClient && (
+            <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
+              <button className="btn-secondary" onClick={verificarTudo} disabled={verificando} style={{ width: '100%', fontSize: 12 }}>
+                {verificando ? '⏳ Verificando processos...' : '🔄 Verificar processos agora'}
+              </button>
+              {verificando && (
+                <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 6, textAlign: 'center' }}>Pode levar alguns minutos — só processos TRT/TJ/TRF.</div>
+              )}
+              {resultado && !verificando && (
+                <div style={{ background: RESULTADO_STYLE[resultado.tipo].bg, border: `1px solid ${RESULTADO_STYLE[resultado.tipo].border}`, color: RESULTADO_STYLE[resultado.tipo].color, borderRadius: 8, padding: '8px 10px', fontSize: 11.5, marginTop: 8, lineHeight: 1.4 }}>
+                  {resultado.texto}
+                </div>
+              )}
+            </div>
+          )}
 
           {notificacoes.length === 0 && (
             <div style={{ padding: '24px 14px', textAlign: 'center', color: 'var(--muted)', fontSize: 12 }}>Nenhuma notificação nova.</div>

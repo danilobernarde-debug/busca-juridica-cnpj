@@ -113,7 +113,7 @@ export default function App() {
     }
 
     const carregarPerfil = async (uid) => {
-      const { data } = await sbClient.from('d_auth_user').select('is_super_admin, nome').eq('uuid', uid).single();
+      const { data } = await sbClient.from('auth_user').select('is_super_admin, nome').eq('uuid', uid).single();
       setIsSuperAdmin(data?.is_super_admin || false);
       return data?.nome || '';
     };
@@ -146,13 +146,17 @@ export default function App() {
   }, []);
 
   // Notificações de novas movimentações (sincronização automática com o DataJud)
+  const recarregarNotificacoes = useCallback(() => {
+    if (!sbClient) return;
+    sb_carregarNotificacoes().then(setNotificacoes).catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (!sbClient || !user) return;
-    const carregar = () => sb_carregarNotificacoes().then(setNotificacoes).catch(() => {});
-    carregar();
-    const intervalo = setInterval(carregar, 3 * 60 * 1000);
+    recarregarNotificacoes();
+    const intervalo = setInterval(recarregarNotificacoes, 3 * 60 * 1000);
     return () => clearInterval(intervalo);
-  }, [user]);
+  }, [user, recarregarNotificacoes]);
 
   const carregarDados = async (silencioso = false, userId = null) => {
     if (!silencioso) setCarregando(true);
@@ -307,7 +311,8 @@ export default function App() {
   return (
     <>
       <Sidebar counts={counts} user={user} onLogout={logout} isSuperAdmin={isSuperAdmin}
-        notificacoes={notificacoes} onAbrirNotificacao={abrirNotificacao} onMarcarTodasNotificacoesLidas={marcarTodasNotificacoesLidas} />
+        notificacoes={notificacoes} onAbrirNotificacao={abrirNotificacao} onMarcarTodasNotificacoesLidas={marcarTodasNotificacoesLidas}
+        onVerificacaoConcluida={recarregarNotificacoes} />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, paddingTop: mobile ? 52 : 0 }}>
         {erroSB && (
           <div style={{ background: 'rgba(239,68,68,.08)', borderBottom: '1px solid rgba(239,68,68,.2)', padding: '8px 20px', fontSize: 12, color: 'var(--red)', display: 'flex', gap: 10, alignItems: 'center' }}>

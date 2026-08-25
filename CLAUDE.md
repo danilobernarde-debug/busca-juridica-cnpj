@@ -10,7 +10,7 @@ Sistema web para acompanhamento de processos jurídicos da **DB Machado / Rede F
 - **Backend:** Supabase (PostgreSQL + Auth + Storage)
 - **IA:** Anthropic API — Claude Haiku para parsing de texto, Claude Opus para PDFs escaneados. Chamada via proxy server-side (`api/claude.js`) — a chave nunca fica no frontend.
 - **PDF:** pdfjs-dist para extração de texto e renderização como imagem
-- **Autenticação:** Supabase Auth com `d_auth_user` customizado
+- **Autenticação:** Supabase Auth com `auth_user` customizado
 
 ---
 
@@ -75,10 +75,10 @@ jud_notificacoes    -- notificações de novas movimentações (populada pelo sy
 ### Tabelas externas (já existiam)
 
 ```sql
-d_auth_user         -- perfil do usuário (uuid → auth.users, nome, email, role_id, is_super_admin, foto_url)
-d_auth_roles        -- perfis/roles disponíveis
-d_auth_contratos    -- contratos (referenciado por deletar_usuario_auth)
-audit_log           -- log de auditoria geral do sistema
+auth_user         -- perfil do usuário (uuid → auth.users, nome, email, role_id, is_super_admin, foto_url)
+auth_roles        -- perfis/roles disponíveis
+prod_usuarios_permissoes    -- contratos (referenciado por deletar_usuario_auth)
+prod_audit_log           -- log de auditoria geral do sistema
 ```
 
 ### Tipos de processo
@@ -103,14 +103,14 @@ audit_log           -- log de auditoria geral do sistema
 
 ```sql
 criar_usuario_auth(p_email, p_password, p_nome, p_role_id)
-  → cria em auth.users + auth.identities + d_auth_user atomicamente
+  → cria em auth.users + auth.identities + auth_user atomicamente
   → retorna UUID do novo usuário
 
 alterar_senha_usuario(p_uuid, p_senha)
   → atualiza encrypted_password em auth.users
 
 deletar_usuario_auth(p_uuid)
-  → remove de d_auth_contratos, d_auth_user, auth.identities, auth.users em cascata
+  → remove de prod_usuarios_permissoes, auth_user, auth.identities, auth.users em cascata
 ```
 
 ---
@@ -152,7 +152,7 @@ jud_pode_ver_por_processo(p_processo_id) → BOOLEAN
 
 ### Fluxo de login
 1. Supabase Auth (`sbClient.auth.signInWithPassword`)
-2. Após login: busca `d_auth_user.is_super_admin` para definir `isSuperAdmin`
+2. Após login: busca `auth_user.is_super_admin` para definir `isSuperAdmin`
 3. Sidebar filtra itens `adminOnly: true` se não for Super Admin
 
 ### Permissões jurídicas (`jud_user_permissoes.tipos[]`)
@@ -212,12 +212,15 @@ ANTHROPIC_API_KEY=sk-ant-...       (obrigatória para IA — usada só por api/c
 
 ## Sincronização Automática com o DataJud (CNJ)
 
-- **`api/sync-datajud.js`** — Vercel Serverless Function, disparada 1x/dia pelo Vercel Cron (`vercel.json` → `crons`, horário `0 11 * * *` UTC ≈ 08h BRT).
-- Para cada processo `tipo=juridico` não arquivado, consulta a API Pública do DataJud (`api-publica.datajud.cnj.jus.br`) pelo número do processo.
-- **Cobertura:** apenas TRT e TJ (padrão de endpoint confirmado na documentação oficial). TRF/TST/STJ/STF são ignorados por ora.
+- **`api/sync-datajud.js`** — Vercel Serverless Function. Três formas de disparo, todas chamando o mesmo endpoint:
+  1. Vercel Cron 1x/dia (`vercel.json` → `crons`, horário `0 11 * * *` UTC ≈ 08h BRT) — roda para todos os processos, autenticado por `CRON_SECRET`.
+  2. Botão **"🔄 Verificar processos agora"** no dropdown de notificações (`src/components/NotificacaoSino.jsx`, sino na Sidebar) — roda para todos os processos, autenticado pela sessão do usuário logado.
+  3. Botão **"🔄 Verificar agora"** na aba Consultar do processo (`TabConsulta.jsx` / `useVerificarDataJud.jsx`) — roda só para aquele processo (`?processoId=...`).
+- Para cada processo `tipo=juridico` não arquivado (ou o processo específico, no caso 3), consulta a API Pública do DataJud (`api-publica.datajud.cnj.jus.br`) pelo número do processo.
+- **Cobertura:** TRT (Justiça do Trabalho), TJ (Justiça Estadual) e TRF (Justiça Federal), cujo padrão de endpoint foi confirmado na documentação oficial. TST/STJ/STF ficam de fora por ora — o processo é apenas ignorado (não gera erro).
 - Movimentações novas (que ainda não existem em `jud_movimentacoes`) são inseridas com `origem = 'DataJud (CNJ)'`, e uma notificação é criada em `jud_notificacoes`.
 - O sino de notificações (`src/components/NotificacaoSino.jsx`, na Sidebar) exibe as notificações não lidas, com polling a cada 3 minutos. Clicar numa notificação marca como lida e abre o processo.
-- A chave pública do DataJud já vem embutida no código (é compartilhada oficialmente por todos, não é secreta) — só é necessário configurar `SUPABASE_URL` e `SUPABASE_SERVICE_KEY` na Vercel para o sync funcionar.
+- A chave pública do DataJud já vem embutida no código (é compartilhada oficialmente por todos, não é secreta) — só é necessário configurar `SUPABASE_URL` e `SUPABASE_SERVICE_KEY` na Vercel para o sync funcionar (seja pelo cron ou pelos botões manuais).
 
 ---
 

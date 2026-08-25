@@ -13,7 +13,7 @@ const NAV_PATHS = {
   config: '/config',
 };
 
-export default function Sidebar({ counts, user, onLogout, isSuperAdmin, notificacoes = [], onAbrirNotificacao, onMarcarTodasNotificacoesLidas }) {
+export default function Sidebar({ counts, user, onLogout, isSuperAdmin, notificacoes = [], onAbrirNotificacao, onMarcarTodasNotificacoesLidas, onVerificacaoConcluida }) {
   const isOwner = user?.email === 'danilo@dbmachado.com';
   const email = user?.email || '';
   const nome = email.split('@')[0];
@@ -50,7 +50,7 @@ export default function Sidebar({ counts, user, onLogout, isSuperAdmin, notifica
           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>Sistema Jurídico</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <NotificacaoSino notificacoes={notificacoes} onAbrir={onAbrirNotificacao} onMarcarTodasLidas={onMarcarTodasNotificacoesLidas} />
+          <NotificacaoSino notificacoes={notificacoes} onAbrir={onAbrirNotificacao} onMarcarTodasLidas={onMarcarTodasNotificacoesLidas} onVerificacaoConcluida={onVerificacaoConcluida} />
           {mobile && (
             <button onClick={() => setAberta(false)} style={{ background: 'transparent', color: 'var(--muted)', fontSize: 20, padding: '4px 8px' }}>✕</button>
           )}
@@ -91,7 +91,7 @@ export default function Sidebar({ counts, user, onLogout, isSuperAdmin, notifica
           <div style={{ marginLeft: 'auto', fontSize: 13, color: '#93c5fd', fontWeight: 600 }}>
             {itens.find(n => n.id === currentView)?.icon} {itens.find(n => n.id === currentView)?.label}
           </div>
-          <NotificacaoSino notificacoes={notificacoes} onAbrir={onAbrirNotificacao} onMarcarTodasLidas={onMarcarTodasNotificacoesLidas} />
+          <NotificacaoSino notificacoes={notificacoes} onAbrir={onAbrirNotificacao} onMarcarTodasLidas={onMarcarTodasNotificacoesLidas} onVerificacaoConcluida={onVerificacaoConcluida} />
         </div>
 
         {aberta && (
